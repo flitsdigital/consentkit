@@ -1,4 +1,4 @@
-# Cookie consent configurator
+# consentkit
 
 Eén pagina die van een website-URL de kleuren/radii/font-sizes haalt, ze mapt op de `--cb-*`-variabelen van [flitsdigital/cookie-consent](https://github.com/flitsdigital/cookie-consent) en de installatiecode voor Webflow oplevert: `custom.css`, head-code, footer-code en een "Copy to Webflow"-knop voor de component.
 

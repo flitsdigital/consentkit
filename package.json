@@ -1,5 +1,5 @@
 {
-  "name": "consent-config",
+  "name": "consentkit",
   "version": "0.1.0",
   "private": true,
   "scripts": {

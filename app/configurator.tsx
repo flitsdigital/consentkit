@@ -283,7 +283,7 @@ document.addEventListener("click", function (e) {
     <div className="grid h-full grid-cols-[264px_1fr_336px] grid-rows-[48px_44px_1fr]">
       {/* Topbar */}
       <header className="col-span-3 flex items-center border-b border-line px-4">
-        <div className="flex w-60 items-center gap-2 text-[13px] font-semibold tracking-tight"><span className="inline-block size-2.5 rounded-full bg-accent" /> consent</div>
+        <div className="flex w-60 items-center gap-2 text-[13px] font-semibold tracking-tight"><span className="inline-block size-2.5 rounded-full bg-accent" /> consentkit</div>
         <div className="flex-1 truncate text-center text-[13px] text-muted">{domain}</div>
         <div className="flex w-60 items-center justify-end gap-2">
           <button type="button" className="btn btn-ghost" onClick={() => copy("link", location.href)}>{copied === "link" ? <><Check /> Link gekopieerd</> : "Deel link"}</button>
