@@ -7,7 +7,8 @@ import { formatHex, parse } from "culori";
 import { AUTO_VARS, COLOR_VARS, DEFAULTS, VAR_NAMES, contrast, deriveAuto, keyFromUrl, mapToVars, renderCustomCss, toPx, type Extracted, type VarName, type Vars } from "@/lib/mapping";
 
 type Files = { customCss: string; classesCss: string; componentHtml: string; clipboardJson: string; headSnippet: string; version: string };
-type Node = { text?: boolean; v?: string; data?: { xattr?: { name: string; value: string }[] } };
+type Node = { text?: boolean; v?: string; data?: { xattr?: { name: string; value: string }[]; link?: { mode: string; url: string } } };
+const PRIVACY_HREF = "/privacybeleid"; // href in component.html / clipboard.json
 
 const TEXT_LABELS = ["Titel", "Tekst", "Privacylink", "Categorie 1", "Categorie 1 – tekst", "Categorie 2", "Categorie 2 – tekst", "Categorie 3", "Categorie 3 – tekst", "Knop: instellingen", "Knop: opslaan", "Knop: weigeren", "Knop: accepteren"];
 const CONTRAST_PAIRS: [VarName, VarName, string][] = [["--cb-color-accent-text", "--cb-color-accent", "Knop"], ["--cb-color", "--cb-color-background", "Tekst"], ["--cb-color", "--cb-color-surface", "Secundair"]];
@@ -83,6 +84,7 @@ export function Configurator({ files }: { files: Files }) {
   const [url, setUrl] = useState(params.get("url") ?? "");
   const [texts, setTexts] = useState<string[]>(() => originals.map((o, i) => params.get(`t${i}`) ?? o));
   const [key, setKey] = useState(params.get("key") ?? "");
+  const [privacy, setPrivacy] = useState(params.get("privacy") ?? PRIVACY_HREF);
   const [extracted, setExtracted] = useState<Extracted | null>(null);
   const [status, setStatus] = useState<{ loading?: boolean; error?: string }>({});
   const [prefsOpen, setPrefsOpen] = useState(false);
@@ -123,10 +125,11 @@ export function Configurator({ files }: { files: Files }) {
     const q = new URLSearchParams();
     if (url) q.set("url", url);
     if (key) q.set("key", key);
+    if (privacy !== PRIVACY_HREF) q.set("privacy", privacy);
     VAR_NAMES.forEach((n) => vars[n] !== DEFAULTS[n] && bindings[n] !== "auto" && q.set(n.slice(2), vars[n]));
     texts.forEach((t, i) => t !== originals[i] && q.set(`t${i}`, t));
     window.history.replaceState(null, "", q.size ? `?${q}` : location.pathname);
-  }, [url, key, vars, texts, originals, bindings]);
+  }, [url, key, privacy, vars, texts, originals, bindings]);
 
   async function extract(target: string, apply: boolean) {
     setStatus({ loading: true });
@@ -160,12 +163,13 @@ export function Configurator({ files }: { files: Files }) {
   }, []);
 
   // Teksten toepassen op HTML (preview) en clipboard-JSON (Copy to Webflow)
-  const applyTextsHtml = (html: string) => originals.reduce((h, o, i) => h.replaceAll(`>${esc(o)}<`, `>${esc(texts[i])}<`).replaceAll(`aria-label="${esc(o)}"`, `aria-label="${esc(texts[i])}"`), html);
+  const applyTextsHtml = (html: string) => originals.reduce((h, o, i) => h.replaceAll(`>${esc(o)}<`, `>${esc(texts[i])}<`).replaceAll(`aria-label="${esc(o)}"`, `aria-label="${esc(texts[i])}"`), html).replace(`href="${PRIVACY_HREF}"`, `href="${esc(privacy)}"`);
   const clipboardJson = () => {
     const nodes = clipboard.payload.nodes.map((n) => {
       if (n.text) return { ...n, v: texts[originals.indexOf(n.v ?? "")] ?? n.v };
       const xattr = n.data?.xattr?.map((a) => (a.name === "aria-label" && originals.includes(a.value) ? { ...a, value: texts[originals.indexOf(a.value)] } : a));
-      return xattr ? { ...n, data: { ...n.data, xattr } } : n;
+      const link = n.data?.link?.url === PRIVACY_HREF ? { ...n.data.link, url: privacy } : n.data?.link;
+      return xattr || link ? { ...n, data: { ...n.data, xattr, link } } : n;
     });
     return JSON.stringify({ ...clipboard, payload: { ...clipboard.payload, nodes } });
   };
@@ -380,6 +384,9 @@ document.addEventListener("click", function (e) {
                   {t.length > 40
                     ? <textarea value={t} rows={3} onChange={(e) => setTexts((s) => s.map((x, j) => (j === i ? e.target.value : x)))} className="field" />
                     : <input type="text" value={t} onChange={(e) => setTexts((s) => s.map((x, j) => (j === i ? e.target.value : x)))} className="field" />}
+                  {i === 2 && (
+                    <input type="text" value={privacy} onChange={(e) => setPrivacy(e.target.value)} placeholder="/privacybeleid" aria-label="Privacylink – URL" className="field mt-1.5 font-mono text-xs" />
+                  )}
                 </label>
               ))}
             </div>
