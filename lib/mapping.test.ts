@@ -19,8 +19,8 @@ describe("mapToVars", () => {
     expect(v["--cb-color"]).toBe("#222222");
     expect(v["--cb-color-background"]).toBe("#ffffff");
     expect(v["--cb-color-accent"]).toBe("#0f4c81");
-    expect(v["--cb-color-accent-text"]).toBe("#fff");
-    expect(v["--cb-color-surface"]).toBe("#f2f4f7");
+    expect(v["--cb-color-accent-text"]).toBe("#ffffff");
+    expect(v["--cb-color-surface"]).toBe("#f2f2f2");
     expect(v["--cb-border-radius"]).toBe("16px");
     expect(v["--cb-button-radius"]).toBe("6px");
     expect(v["--cb-font-size"]).toBe("17px");

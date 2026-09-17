@@ -47,6 +47,20 @@ export function contrast(a: string, b: string): number | undefined {
 /** Mengt `a` voor `p` (0–1) in `b`; alle waarden concreet (DialKit-kleurcontrols verstaan geen color-mix()). */
 const mix = (a: string, b: string, p: number) => formatHex(interpolate([parse(b)!, parse(a)!], "rgb")(p));
 
+/** Afgeleide kleuren (in de UI "Auto"): volgen tekst/achtergrond/accent tot de gebruiker ze zelf zet. */
+export const AUTO_VARS = ["--cb-color-surface", "--cb-color-switch-off", "--cb-color-focus", "--cb-color-accent-text"] as const satisfies VarName[];
+export function deriveAuto(v: Pick<Vars, "--cb-color" | "--cb-color-background" | "--cb-color-accent">): Record<(typeof AUTO_VARS)[number], string> {
+  const white = contrast("#fff", v["--cb-color-accent"]) ?? 0;
+  const dark = contrast(v["--cb-color"], v["--cb-color-accent"]) ?? 0;
+  return {
+    "--cb-color-surface": mix(v["--cb-color"], v["--cb-color-background"], 0.06),
+    "--cb-color-switch-off": mix(v["--cb-color"], v["--cb-color-background"], 0.18),
+    "--cb-color-focus": v["--cb-color"],
+    // wit als ≥4.5:1, anders tekstkleur als die het haalt, anders wat het hoogst scoort
+    "--cb-color-accent-text": white >= 4.5 ? "#ffffff" : dark >= 4.5 ? v["--cb-color"] : white >= dark ? "#ffffff" : v["--cb-color"],
+  };
+}
+
 /** "16px" → 16, ".5rem" → 8; undefined voor alles wat niet naar px te vertalen is. */
 export function toPx(value: string): number | undefined {
   const m = value.trim().match(/^([\d.]+)(px|rem|em)?$/);
@@ -80,19 +94,7 @@ export function mapToVars(x: Extracted): Vars {
   const saturated = colors.find((c) => C(c.parsed) > 0.04 && L(c.parsed) > 0.2 && L(c.parsed) < 0.9);
   vars["--cb-color-accent"] = (brandVar && hex(brandVar.value)) ?? (saturated ? formatHex(saturated.parsed) : DEFAULTS["--cb-color-accent"]);
 
-  // accent-text: wit als ≥4.5:1, anders --cb-color als die het haalt, anders wat het hoogst scoort
-  const white = contrast("#fff", vars["--cb-color-accent"]) ?? 0;
-  const dark = contrast(vars["--cb-color"], vars["--cb-color-accent"]) ?? 0;
-  vars["--cb-color-accent-text"] = white >= 4.5 ? "#fff" : dark >= 4.5 ? vars["--cb-color"] : white >= dark ? "#fff" : vars["--cb-color"];
-
-  // surface: lichtste grijs/tint (niet wit), anders color-mix
-  const bgL = L(parse(vars["--cb-color-background"])!);
-  const surface = colors
-    .filter((c) => C(c.parsed) < 0.05 && L(c.parsed) > 0.85 && Math.abs(L(c.parsed) - bgL) > 0.01)
-    .sort((a, b) => L(b.parsed) - L(a.parsed))[0];
-  vars["--cb-color-surface"] = surface ? formatHex(surface.parsed) : mix(vars["--cb-color"], vars["--cb-color-background"], 0.06);
-  vars["--cb-color-switch-off"] = mix(vars["--cb-color"], vars["--cb-color-background"], 0.18);
-  vars["--cb-color-focus"] = vars["--cb-color"];
+  Object.assign(vars, deriveAuto(vars));
 
   // radius: meest voorkomende > 0, tweede als button-radius
   const radii = x.radii.map((r) => ({ px: toPx(r.value), count: r.count })).filter((r): r is { px: number; count: number } => !!r.px).sort((a, b) => b.count - a.count);

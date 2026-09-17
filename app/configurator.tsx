@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { DialRoot, useDialKitController, type DialConfig } from "dialkit";
+import { ColorControl, Folder, Slider, TextControl, useDialKitController, type DialConfig } from "dialkit";
 import { formatHex, parse } from "culori";
-import { COLOR_VARS, DEFAULTS, VAR_NAMES, contrast, keyFromUrl, mapToVars, renderCustomCss, toPx, type Extracted, type VarName, type Vars } from "@/lib/mapping";
+import { AUTO_VARS, COLOR_VARS, DEFAULTS, VAR_NAMES, contrast, deriveAuto, keyFromUrl, mapToVars, renderCustomCss, toPx, type Extracted, type VarName, type Vars } from "@/lib/mapping";
 
 type Files = { customCss: string; classesCss: string; componentHtml: string; clipboardJson: string; headSnippet: string; version: string };
 type Node = { text?: boolean; v?: string; data?: { xattr?: { name: string; value: string }[] } };
@@ -69,6 +69,7 @@ const toVars = (values: DialValues): Vars => {
   }
   return vars;
 };
+const pathOf = (n: VarName) => Object.entries(DIAL).find(([, d]) => d.v === n)![0];
 const COLOR_TARGETS = Object.entries(DIAL).filter(([, d]) => COLOR_VARS.includes(d.v)).map(([p]) => ({ path: p, label: p.split(".")[1] }));
 const RADIUS_TARGETS = [{ path: "maten.kaartRadius", label: "Kaart" }, { path: "maten.knopRadius", label: "Knop" }];
 const FONT_TARGETS = [{ path: "typografie.tekst", label: "Tekst" }, { path: "typografie.klein", label: "Klein" }, { path: "typografie.titel", label: "Titel" }];
@@ -90,20 +91,42 @@ export function Configurator({ files }: { files: Files }) {
   const [leftTab, setLeftTab] = useState<"gevonden" | "teksten">("gevonden");
   const [rightTab, setRightTab] = useState<"stijl" | "export">("stijl");
   const [copied, setCopied] = useState("");
+  // Figma-achtige variabelen: kleur gekoppeld aan een site-variabele → export als var(--naam).
+  // "auto" = afgeleid van tekst/achtergrond/accent (deriveAuto) tot de gebruiker de kleur zelf zet.
+  const [bindings, setBindings] = useState<Partial<Record<VarName, string>>>(() =>
+    Object.fromEntries(COLOR_VARS.flatMap((n) => {
+      const p = params.get(n.slice(2));
+      const m = p?.match(/^var\((--[^)]+)\)$/);
+      if (m) return [[n, m[1]]];
+      return !p && (AUTO_VARS as readonly string[]).includes(n) ? [[n, "auto"]] : [];
+    })));
 
-  const [config] = useState(() => dialConfig(Object.fromEntries(VAR_NAMES.map((n) => [n, params.get(n.slice(2)) ?? DEFAULTS[n]])) as Vars));
+  const [config] = useState(() => dialConfig(Object.fromEntries(VAR_NAMES.map((n) => [n, (params.get(n.slice(2)) ?? DEFAULTS[n]).replace(/^var\(.*$/, DEFAULTS[n])])) as Vars));
   const dial = useDialKitController("Banner", config, { id: "banner" });
-  const vars = useMemo(() => toVars(dial.values as unknown as DialValues), [dial.values]);
+  const values = dial.values as unknown as DialValues;
+  const resolved = useMemo(() => toVars(values), [values]); // altijd hex/px: preview + contrast
+  const vars = useMemo(() => ({ ...resolved, ...Object.fromEntries(Object.entries(bindings).filter(([, v]) => v !== "auto").map(([n, v]) => [n, `var(${v})`])) }) as Vars, [resolved, bindings]); // export
+  // Auto-kleuren volgen tekst/achtergrond/accent
+  useEffect(() => {
+    const auto = deriveAuto(resolved);
+    for (const n of AUTO_VARS) if (bindings[n] === "auto" && resolved[n] !== auto[n]) dial.setValue(pathOf(n), auto[n]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolved["--cb-color"], resolved["--cb-color-background"], resolved["--cb-color-accent"], bindings]);
+  const siteVars = useMemo(() => (extracted?.variables ?? []).filter((v) => !v.name.startsWith("--cb-") && (/^(#|rgb|hsl|oklch)/i.test(v.value) || /^[a-z]+$/i.test(v.value)) && parse(v.value)), [extracted]);
+  const bind = (n: VarName, name: string | null, value: string) => {
+    setBindings((b) => { const next = { ...b }; if (name) next[n] = name; else delete next[n]; return next; });
+    dial.setValue(pathOf(n), hex(value));
+  };
 
   // Deelbare state: alles wat afwijkt van de default in de querystring
   useEffect(() => {
     const q = new URLSearchParams();
     if (url) q.set("url", url);
     if (key) q.set("key", key);
-    VAR_NAMES.forEach((n) => vars[n] !== DEFAULTS[n] && q.set(n.slice(2), vars[n]));
+    VAR_NAMES.forEach((n) => vars[n] !== DEFAULTS[n] && bindings[n] !== "auto" && q.set(n.slice(2), vars[n]));
     texts.forEach((t, i) => t !== originals[i] && q.set(`t${i}`, t));
     window.history.replaceState(null, "", q.size ? `?${q}` : location.pathname);
-  }, [url, key, vars, texts, originals]);
+  }, [url, key, vars, texts, originals, bindings]);
 
   async function extract(target: string, apply: boolean) {
     setStatus({ loading: true });
@@ -112,8 +135,11 @@ export function Configurator({ files }: { files: Files }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       setExtracted(json);
+      const found = new Map((json as Extracted).variables.map((v) => [v.name, v.value]));
+      for (const [n, name] of Object.entries(bindings)) if (found.has(name)) dial.setValue(pathOf(n as VarName), hex(found.get(name)!));
       if (apply) {
         dial.setValues(toDial(mapToVars(json)));
+        setBindings((b) => ({ ...b, ...Object.fromEntries(AUTO_VARS.map((n) => [n, "auto"])) }));
         setKey(keyFromUrl(target));
       }
       setStatus({});
@@ -121,6 +147,11 @@ export function Configurator({ files }: { files: Files }) {
       setStatus({ error: e instanceof Error ? e.message : "Site niet bereikbaar" });
     }
   }
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => { if (e.data?.cb === "settings") setPrefsOpen(true); if (e.data?.cb === "save") setPrefsOpen(false); };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, []);
   // Link met state geopend: wel de gevonden waarden ophalen, niet de gekozen waarden overschrijven
   useEffect(() => {
     const u = params.get("url");
@@ -140,16 +171,27 @@ export function Configurator({ files }: { files: Files }) {
   };
 
   const customCss = renderCustomCss(files.customCss, vars);
+  const previewCss = renderCustomCss(files.customCss, resolved);
   const exportCss = `<style>\n${customCss}</style>`;
   const headCode = `<script>window.FlitsConsent = { key: '${key || "flits_consent"}', version: 1, days: 180 };</script>\n${files.headSnippet.trim()}`;
   const footerCode = `<script src="https://cdn.jsdelivr.net/gh/flitsdigital/cookie-consent@${files.version}/dist/consent.min.js" defer></script>`;
 
-  const srcdoc = `<!doctype html><html><head><meta name="viewport" content="width=device-width"><style>${customCss}</style><style>${files.classesCss}</style><style>
+  const srcdoc = `<!doctype html><html><head><meta name="viewport" content="width=device-width"><style>${previewCss}</style><style>${files.classesCss}</style><style>
+*{box-sizing:border-box}
 html,body{margin:0;height:100%;font-family:system-ui,sans-serif;background:color-mix(in srgb, var(--cb-color) 8%, var(--cb-color-background))}
 .site{position:absolute;inset:0;width:100%;height:100%;border:0}
 .cb-banner{display:block}
 ${prefsOpen ? ".cb-prefs{display:block}[data-cb-action=settings]{display:none}" : "[data-cb-action=save]{display:none}"}
-</style></head><body>${siteBg && url ? `<iframe class="site" src="${esc(url)}"></iframe>` : ""}${applyTextsHtml(files.componentHtml.split("<!-- Ergens")[0])}</body></html>`;
+</style></head><body>${siteBg && url ? `<iframe class="site" src="${esc(url)}"></iframe>` : ""}${applyTextsHtml(files.componentHtml.split("<!-- Ergens")[0])}
+<script>
+// Preview-interactie: links niet volgen, switches togglen, instellingen/opslaan naar de tool melden
+document.addEventListener("click", function (e) {
+  var a = e.target.closest("a, [role=switch]"); if (!a) return; e.preventDefault();
+  var act = a.getAttribute("data-cb-action");
+  if (act === "settings" || act === "save") parent.postMessage({ cb: act }, "*");
+  if (a.hasAttribute("data-cb-toggle")) { var on = a.classList.toggle("is-on"); a.setAttribute("aria-checked", String(on)); }
+});
+</script></body></html>`;
 
   function flash(name: string) { setCopied(name); setTimeout(() => setCopied(""), 1600); }
   async function copy(name: string, text: string) { await navigator.clipboard.writeText(text); flash(name); }
@@ -168,18 +210,74 @@ ${prefsOpen ? ".cb-prefs{display:block}[data-cb-action=settings]{display:none}" 
       {copied === name ? <><Check /> Gekopieerd</> : "Kopieer"}
     </button>
   );
-  const menuFor = (id: string, targets: { path: string; label: string }[], value: string | number) => (
+  const menuFor = (id: string, targets: { path: string; label: string }[], value: string | number, varName?: string) => (
     <div id={id} popover="auto" className="menu">
       <div className="menu-title">Gebruik als</div>
       {targets.map((t) => (
-        <button key={t.path} type="button" popoverTarget={id} popoverTargetAction="hide" onClick={() => dial.setValue(t.path, value)}>{label(t.label)}</button>
+        <button key={t.path} type="button" className="menu-item" popoverTarget={id} popoverTargetAction="hide" onClick={() => (typeof value === "string" && COLOR_VARS.includes(DIAL[t.path].v) ? bind(DIAL[t.path].v, varName ?? null, value) : dial.setValue(t.path, value))}>{label(t.label)}</button>
       ))}
     </div>
   );
+  const shortName = (name: string) => name.replace(/^--_?/, "").replace(/\\.*$/, "");
+  const [varQuery, setVarQuery] = useState("");
+  // Kleurrij: DialKit ColorControl + variabelen-picker (Figma-stijl). Gekoppeld → chip met naam i.p.v. hex.
+  const colorRow = (path: string) => {
+    const d = DIAL[path];
+    const bound = bindings[d.v];
+    const id = `pick-${d.v.slice(5)}`;
+    const q = varQuery.toLowerCase();
+    return (
+      <div key={path} className="flex items-center gap-1.5">
+        {bound ? (
+          <div className="dialkit-color-control flex-1" data-bound>
+            <span className="dialkit-color-label">{label(path.split(".")[1])}</span>
+            <button type="button" popoverTarget={id} title={bound === "auto" ? "Afgeleid van tekst/achtergrond/accent" : bound} className={`var-chip ${bound === "auto" ? "auto-chip" : ""}`}>
+              <span className="swatch size-3.5 shrink-0 rounded-sm" style={{ background: resolved[d.v] }} />
+              <span className="truncate">{bound === "auto" ? `Auto · ${resolved[d.v]}` : shortName(bound)}</span>
+            </button>
+            <button type="button" className="var-detach" title="Loskoppelen" aria-label="Loskoppelen" onClick={() => bind(d.v, null, resolved[d.v])}><Unlink /></button>
+          </div>
+        ) : (
+          <div className="min-w-0 flex-1"><ColorControl label={label(path.split(".")[1])} value={String(values[path.split(".")[0]]?.[path.split(".")[1]] ?? "#000000")} onChange={(v) => dial.setValue(path, v)} /></div>
+        )}
+        {!bound && <button type="button" popoverTarget={id} className="var-btn" title="Variabele van de site" aria-label="Variabele kiezen" disabled={!siteVars.length}><VarIcon /></button>}
+        <div id={id} popover="auto" className="menu w-64" style={{ positionArea: "bottom span-left" }}>
+          <input type="search" value={varQuery} onChange={(e) => setVarQuery(e.target.value)} placeholder="Zoek variabele…" className="field mb-1 h-7 text-xs" autoFocus />
+          <div className="max-h-64 overflow-y-auto">
+            {(AUTO_VARS as readonly string[]).includes(d.v) && !q && (
+              <button type="button" className="menu-item" popoverTarget={id} popoverTargetAction="hide" onClick={() => bind(d.v, "auto", deriveAuto(resolved)[d.v as (typeof AUTO_VARS)[number]])} aria-current={bound === "auto"}>
+                <span className="swatch size-4 shrink-0 rounded" style={{ background: deriveAuto(resolved)[d.v as (typeof AUTO_VARS)[number]] }} />
+                <span className="text-[12px]">Auto</span><span className="ml-auto text-[10px] text-muted">afgeleid</span>
+              </button>
+            )}
+            {siteVars.filter((v) => !q || v.name.toLowerCase().includes(q) || v.value.includes(q)).map((v) => (
+              <button key={v.name} type="button" className="menu-item" popoverTarget={id} popoverTargetAction="hide" title={v.name} onClick={() => bind(d.v, v.name, v.value)} aria-current={bound === v.name}>
+                <span className="swatch size-4 shrink-0 rounded" style={{ background: v.value }} />
+                <span className="truncate font-mono text-[11px]">{shortName(v.name)}</span>
+                <span className="ml-auto shrink-0 font-mono text-[10px] text-muted">{hex(v.value)}</span>
+              </button>
+            ))}
+            {extracted && !q && (
+              <>
+                <div className="menu-title mt-1">Gevonden kleuren</div>
+                <div className="grid grid-cols-8 gap-1 px-1 pb-1">
+                  {extracted.colors.slice(0, 32).map((c) => (
+                    <button key={c.value} type="button" popoverTarget={id} popoverTargetAction="hide" title={`${c.value} · ${c.count}×`} className="swatch aspect-square rounded transition-transform duration-150 active:scale-[0.97]" style={{ background: c.value, padding: 0 }} onClick={() => bind(d.v, null, c.value)} />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+  const slider = (path: string) => { const d = DIAL[path]; const [f, k] = path.split("."); return <Slider key={path} label={label(k)} value={Number(values[f]?.[k] ?? 0)} onChange={(v) => dial.setValue(path, v)} min={d.range![0]} max={d.range![1]} step={d.range![2] ?? 1} unit={d.v === "--cb-z-index" ? "" : "px"} />; };
+  const text = (path: string) => { const [f, k] = path.split("."); return <TextControl key={path} label={label(k)} value={String(values[f]?.[k] ?? "")} onChange={(v) => dial.setValue(path, v)} />; };
+  const paths = (folder: string) => Object.keys(DIAL).filter((p) => p.startsWith(folder + "."));
 
   const domain = (() => { try { return new URL(url).hostname; } catch { return "Nieuwe banner"; } })();
-  // culori parseert "400" als hex; alleen echte kleurnotaties en named colors tonen
-  const colorVars = extracted?.variables.filter((v) => !v.name.startsWith("--cb-") && (/^(#|rgb|hsl|oklch)/i.test(v.value) || /^[a-z]+$/i.test(v.value)) && parse(v.value)) ?? [];
+  const colorVars = siteVars;
 
   return (
     <div className="grid h-full grid-cols-[264px_1fr_336px] grid-rows-[48px_44px_1fr]">
@@ -243,10 +341,10 @@ ${prefsOpen ? ".cb-prefs{display:block}[data-cb-action=settings]{display:none}" 
                       <span key={v.name} className="relative block">
                         <button type="button" popoverTarget={`v${i}`} title={v.name} className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors duration-150 hover:bg-raised">
                           <span className="swatch size-4 shrink-0 rounded" style={{ background: v.value }} />
-                          <span className="truncate font-mono text-[11px] text-fg/80">{v.name.replace(/^--_?/, "").replace(/\\.*$/, "")}</span>
+                          <span className="truncate font-mono text-[11px] text-fg/80">{shortName(v.name)}</span>
                           <span className="ml-auto shrink-0 font-mono text-[10px] text-muted">{hex(v.value)}</span>
                         </button>
-                        {menuFor(`v${i}`, COLOR_TARGETS, hex(v.value))}
+                        {menuFor(`v${i}`, COLOR_TARGETS, v.value, v.name)}
                       </span>
                     ))}
                   </div>
@@ -314,12 +412,12 @@ ${prefsOpen ? ".cb-prefs{display:block}[data-cb-action=settings]{display:none}" 
           <div className={rightTab === "stijl" ? "" : "hidden"}>
             <div className="grid grid-cols-3 gap-1.5 px-3 pb-2">
               {CONTRAST_PAIRS.map(([a, b, name]) => {
-                const r = contrast(vars[a], vars[b]) ?? 0;
+                const r = contrast(resolved[a], resolved[b]) ?? 0;
                 const ok = r >= 4.5;
                 return (
                   <div key={name} className="rounded-lg p-2" style={{ boxShadow: "var(--shadow-ring)" }} title={`${a} op ${b}`}>
                     <div className="flex items-center justify-between">
-                      <span className="swatch flex h-5 w-7 items-center justify-center rounded text-[10px] font-bold" style={{ background: vars[b], color: vars[a] }}>Aa</span>
+                      <span className="swatch flex h-5 w-7 items-center justify-center rounded text-[10px] font-bold" style={{ background: resolved[b], color: resolved[a] }}>Aa</span>
                       <span className={`rounded px-1 py-px text-[10px] font-semibold ${ok ? "bg-emerald-400/15 text-emerald-300" : "bg-red-400/15 text-red-300"}`}>{ok ? "AA" : "✕"}</span>
                     </div>
                     <div className="mt-1.5 flex items-baseline justify-between text-[11px]"><span className="text-muted">{name}</span><span className="font-mono">{r.toFixed(1)}</span></div>
@@ -327,8 +425,11 @@ ${prefsOpen ? ".cb-prefs{display:block}[data-cb-action=settings]{display:none}" 
                 );
               })}
             </div>
-            <div className="px-1">
-              <DialRoot mode="inline" theme="dark" productionEnabled />
+            <div className="dialkit-root px-3 pb-4" data-theme="dark">
+              <Folder title="Kleuren" inline><div className="space-y-1.5">{paths("kleuren").map(colorRow)}</div></Folder>
+              <Folder title="Typografie" inline><div className="space-y-1.5">{paths("typografie").map(slider)}</div></Folder>
+              <Folder title="Maten" inline><div className="space-y-1.5">{paths("maten").map(slider)}</div></Folder>
+              <Folder title="Effect" inline defaultOpen={false}><div className="space-y-1.5">{paths("effect").map(text)}</div></Folder>
             </div>
           </div>
           {rightTab === "export" && (
@@ -372,4 +473,6 @@ function Step({ n, title, sub, action, children }: { n: number; title: string; s
 }
 const Check = () => <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3 7-7" /></svg>;
 const Arrow = () => <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12L12 4M6 4h6v6" /></svg>;
+const VarIcon = () => <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" /></svg>;
+const Unlink = () => <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 9.5l3-3M9 4l1-1a2.5 2.5 0 0 1 3.5 3.5l-1 1M7 12l-1 1a2.5 2.5 0 0 1-3.5-3.5l1-1M3 3l10 10" /></svg>;
 const Spinner = () => <svg className="animate-spin" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M8 2a6 6 0 1 1-6 6" /></svg>;

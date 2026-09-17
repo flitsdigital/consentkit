@@ -71,8 +71,8 @@ textarea.field { @apply h-auto py-1.5 leading-snug; }
   transition: opacity 150ms var(--ease-out-strong), transform 150ms var(--ease-out-strong), display 150ms allow-discrete, overlay 150ms allow-discrete;
 }
 .menu:popover-open { opacity: 1; transform: none; @starting-style { opacity: 0; transform: scale(0.96); } }
-.menu > button { @apply flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-fg; }
-@media (hover: hover) and (pointer: fine) { .menu > button:hover { background: rgba(255, 255, 255, 0.08); } }
+.menu-item { @apply flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-fg; }
+@media (hover: hover) and (pointer: fine) { .menu-item:hover { background: rgba(255, 255, 255, 0.08); } }
 .menu-title { @apply px-2 pt-1 pb-1.5 text-[11px] font-medium tracking-wide text-muted uppercase; }
 
 /* Canvas */
@@ -84,8 +84,30 @@ textarea.field { @apply h-auto py-1.5 leading-snug; }
 
 .swatch { outline: 1px solid oklch(1 0 0 / 0.1); outline-offset: -1px; }
 
-/* DialKit inline: laat het panel het rechterpaneel vullen */
-.dialkit-root[data-mode="inline"] { --dial-glass-bg: transparent; --dial-shadow: none; }
+/* DialKit custom layout (eigen controls in .dialkit-root) */
+.dialkit-root { --dial-glass-bg: transparent; --dial-shadow: none; }
+.var-btn {
+  @apply flex size-9 shrink-0 items-center justify-center rounded-lg text-muted;
+  background: var(--dial-surface);
+  transition: background-color 150ms var(--ease-out-strong), color 150ms var(--ease-out-strong), transform 160ms var(--ease-out-strong);
+}
+@media (hover: hover) and (pointer: fine) { .var-btn:hover:not(:disabled) { background: var(--dial-surface-hover); color: var(--color-fg); } }
+.var-btn:active { transform: scale(0.96); }
+.var-btn:disabled { opacity: 0.35; }
+.var-chip {
+  @apply flex h-6 min-w-0 items-center gap-1.5 rounded-md px-1.5 font-mono text-[11px] text-fg;
+  background: rgba(167, 139, 250, 0.18);
+  box-shadow: 0 0 0 1px rgba(167, 139, 250, 0.35);
+  transition: background-color 150ms var(--ease-out-strong), transform 160ms var(--ease-out-strong);
+}
+@media (hover: hover) and (pointer: fine) { .var-chip:hover { background: rgba(167, 139, 250, 0.28); } }
+.var-chip:active { transform: scale(0.97); }
+.var-detach { @apply flex size-6 shrink-0 items-center justify-center rounded-md text-muted; transition: color 150ms, background-color 150ms; }
+@media (hover: hover) and (pointer: fine) { .var-detach:hover { color: var(--color-fg); background: var(--dial-surface-hover); } }
+.dialkit-color-control[data-bound] { gap: 6px; }
+.dialkit-color-control[data-bound] .dialkit-color-label { flex: 1; min-width: 0; }
+.menu-item[aria-current="true"] { background: rgba(167, 139, 250, 0.18); }
+.auto-chip { background: rgba(255, 255, 255, 0.08); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12); }
 
 pre.code { @apply overflow-auto rounded-lg p-3 font-mono text-[11px] leading-relaxed text-fg/80; background: #111; box-shadow: var(--shadow-ring); }
 
