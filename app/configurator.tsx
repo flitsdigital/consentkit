@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ButtonGroup, ColorControl, Folder, Slider, TextControl, useDialKitController, type DialConfig } from "dialkit";
 import { formatHex, parse } from "culori";
@@ -103,6 +103,27 @@ export function Configurator({ files }: { files: Files }) {
   const [leftTab, setLeftTab] = useState<"gevonden" | "teksten">("gevonden");
   const [rightTab, setRightTab] = useState<"stijl" | "export">("stijl");
   const [copied, setCopied] = useState("");
+  // Categorie slepen met pointer events (geen HTML5-DnD: werkt ook op touch en is te testen)
+  const [drag, setDrag] = useState<{ from: number | null; over: number | null }>({ from: null, over: null });
+  const startDrag = (from: number) => (e: React.PointerEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    const rows = [...document.querySelectorAll<HTMLElement>(".drag-row")];
+    let over = from;
+    const onMove = (ev: PointerEvent) => {
+      over = rows.findIndex((r) => { const b = r.getBoundingClientRect(); return ev.clientY < b.top + b.height / 2; });
+      if (over === -1) over = rows.length - 1; else if (over > from) over -= 1;
+      setDrag({ from, over });
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      if (over !== from) setCats((cs) => { const n = [...cs]; const [m] = n.splice(from, 1); n.splice(over, 0, m); return n; });
+      setDrag({ from: null, over: null });
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    setDrag({ from, over: from });
+  };
   // Figma-achtige variabelen: kleur gekoppeld aan een site-variabele → export als var(--naam).
   // "auto" = afgeleid van tekst/achtergrond/accent (deriveAuto) tot de gebruiker de kleur zelf zet.
   const [bindings, setBindings] = useState<Partial<Record<VarName, string>>>(() =>
@@ -419,38 +440,41 @@ document.addEventListener("click", function (e) {
           {leftTab === "teksten" && (
             <div className="dialkit-root texts px-1 pb-4" data-theme="dark">
               <Folder title="Algemeen" inline>
-                <div className="space-y-1.5">
+                <div className="flex flex-col gap-1.5">
                   {GENERAL.map(([i, lbl]) => (
-                    <div key={i} className="contents">
+                    <Fragment key={i}>
                       <TextControl label={lbl} value={texts[i]} onChange={(v) => setTexts((s) => s.map((x, j) => (j === i ? v : x)))} />
                       {i === 2 && <TextControl label="Privacy-URL" value={privacy} onChange={setPrivacy} placeholder="/privacybeleid" />}
-                    </div>
+                    </Fragment>
                   ))}
                 </div>
               </Folder>
               {cats.map((c, i) => {
-                const move = (from: number, dir: -1 | 1) => setCats((cs) => { const n = [...cs]; [n[from], n[from + dir]] = [n[from + dir], n[from]]; return n; });
                 const upd = (patch: Partial<Cat>) => setCats((cs) => cs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
                 return (
-                  <Folder key={i} title={c.title || `Categorie ${i + 1}`} inline defaultOpen={false}>
-                    <div className="space-y-1.5">
-                      <div className="flex gap-1.5">
-                        <button type="button" className="btn h-7 px-2" disabled={i === 0} onClick={() => move(i, -1)} aria-label="Omhoog">↑</button>
-                        <button type="button" className="btn h-7 px-2" disabled={i === cats.length - 1} onClick={() => move(i, 1)} aria-label="Omlaag">↓</button>
-                        {!c.locked && <button type="button" className="btn btn-ghost ml-auto h-7 px-2 text-red-300" onClick={() => setCats((cs) => cs.filter((_, j) => j !== i))}>Verwijderen</button>}
+                  <div
+                    key={i}
+                    className="drag-row"
+                    data-over={drag.over === i && drag.from !== i ? (drag.from! < i ? "after" : "before") : undefined}
+                    data-dragging={drag.from === i || undefined}
+                  >
+                    <button type="button" className="drag-handle" aria-label="Versleep categorie" title="Versleep" onPointerDown={startDrag(i)}><Grip /></button>
+                    <Folder title={c.title || `Categorie ${i + 1}`} inline defaultOpen={false}>
+                      <div className="flex flex-col gap-1.5">
+                        <TextControl label="Titel" value={c.title} onChange={(v) => upd({ title: v, ...(c.locked || cats.some((x) => x !== c && x.key === c.key) || c.key === slug(c.title) ? { key: c.locked ? "" : slug(v) } : {}) })} />
+                        <TextControl label="Tekst" value={c.text} onChange={(v) => upd({ text: v })} />
+                        {c.locked ? (
+                          <p className="px-3 py-1 text-[11px] text-muted">Staat altijd aan (geen schakelaar).</p>
+                        ) : (
+                          <>
+                            <TextControl label="Key" value={c.key} onChange={(v) => upd({ key: slug(v) })} placeholder="analytics" />
+                            <TextControl label="Consent Mode" value={c.signals} onChange={(v) => upd({ signals: v })} placeholder="analytics_storage" />
+                            <ButtonGroup buttons={[{ label: "Categorie verwijderen", onClick: () => setCats((cs) => cs.filter((_, j) => j !== i)) }]} />
+                          </>
+                        )}
                       </div>
-                      <TextControl label="Titel" value={c.title} onChange={(v) => upd({ title: v, ...(c.locked || cats.some((x) => x !== c && x.key === c.key) || c.key === slug(c.title) ? { key: c.locked ? "" : slug(v) } : {}) })} />
-                      <TextControl label="Tekst" value={c.text} onChange={(v) => upd({ text: v })} />
-                      {c.locked ? (
-                        <p className="px-3 py-1 text-[11px] text-muted">Staat altijd aan (geen schakelaar).</p>
-                      ) : (
-                        <>
-                          <TextControl label="Key" value={c.key} onChange={(v) => upd({ key: slug(v) })} placeholder="analytics" />
-                          <TextControl label="Consent Mode" value={c.signals} onChange={(v) => upd({ signals: v })} placeholder="analytics_storage" />
-                        </>
-                      )}
-                    </div>
-                  </Folder>
+                    </Folder>
+                  </div>
                 );
               })}
               <div className="pt-2">
@@ -546,6 +570,7 @@ function Step({ n, title, sub, action, children }: { n: number; title: string; s
   );
 }
 const Cookie = () => <svg width="18" height="18" viewBox="0 0 24 24" className="text-accent" aria-hidden><path fillRule="evenodd" clipRule="evenodd" fill="currentColor" d="M2 12C2 6.47715 6.47715 2 12 2C12.3853 2 12.7659 2.02184 13.1406 2.06443L14.1463 2.17875L14.0198 3.18304C14.0068 3.28644 14 3.39219 14 3.5C14 4.76634 14.9425 5.81419 16.1638 5.97771L16.9209 6.07907L17.0223 6.83617C17.1858 8.05754 18.2337 9 19.5 9C19.8094 9 20.1035 8.94425 20.3743 8.84314L21.4192 8.45303L21.6934 9.53406C21.8938 10.3239 22 11.1503 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12ZM10 8.5C10 9.32843 9.32843 10 8.5 10C7.67157 10 7 9.32843 7 8.5C7 7.67157 7.67157 7 8.5 7C9.32843 7 10 7.67157 10 8.5ZM14 11.5C14 12.3284 13.3284 13 12.5 13C11.6716 13 11 12.3284 11 11.5C11 10.6716 11.6716 10 12.5 10C13.3284 10 14 10.6716 14 11.5ZM17 15C17.5523 15 18 14.5523 18 14C18 13.4477 17.5523 13 17 13C16.4477 13 16 13.4477 16 14C16 14.5523 16.4477 15 17 15ZM13 16.5C13 17.3284 12.3284 18 11.5 18C10.6716 18 10 17.3284 10 16.5C10 15.6716 10.6716 15 11.5 15C12.3284 15 13 15.6716 13 16.5ZM7 15C7.55228 15 8 14.5523 8 14C8 13.4477 7.55228 13 7 13C6.44772 13 6 13.4477 6 14C6 14.5523 6.44772 15 7 15Z" /></svg>;
+const Grip = () => <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" aria-hidden><circle cx="2.5" cy="2" r="1.3" /><circle cx="7.5" cy="2" r="1.3" /><circle cx="2.5" cy="7" r="1.3" /><circle cx="7.5" cy="7" r="1.3" /><circle cx="2.5" cy="12" r="1.3" /><circle cx="7.5" cy="12" r="1.3" /></svg>;
 const Check = () => <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3 7-7" /></svg>;
 const Arrow = () => <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12L12 4M6 4h6v6" /></svg>;
 const VarIcon = () => <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" /></svg>;
