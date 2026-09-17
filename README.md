@@ -1,36 +1,19 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Cookie consent configurator
 
-## Getting Started
+Eén pagina die van een website-URL de kleuren/radii/font-sizes haalt, ze mapt op de `--cb-*`-variabelen van [flitsdigital/cookie-consent](https://github.com/flitsdigital/cookie-consent) en de installatiecode voor Webflow oplevert: `custom.css`, head-code, footer-code en een "Copy to Webflow"-knop voor de component.
 
-First, run the development server:
+Alle banner-bestanden komen uit de source-repo (`public/consent/`, niet in git). Die repo is de enige bron van waarheid; hier staat geen eigen banner-CSS of -markup.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run sync   # haalt custom.css, classes.css, component.html, clipboard.json, head.snippet.html op (draait ook in prebuild)
+npm run dev    # http://localhost:3000
+npm test       # vitest: mapping
+npm run test:e2e   # playwright (mockt /api/extract)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Deploy: Vercel, geen env-vars nodig. `prebuild` draait `sync`, dus elke deploy pakt de laatste versie van de source-bestanden; het versienummer in de footer-code komt van de laatste GitHub-tag (fallback `1.0.0`).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Deelbare state: alle gekozen waarden staan in de querystring (`?url=…&cb-color-accent=%23…&t0=…&key=…`).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Bestanden: `lib/extract.ts` (fetch + css-tree, server), `lib/mapping.ts` (mapping, contrast, custom.css-rendering), `app/configurator.tsx` (UI), `app/api/extract/route.ts`.

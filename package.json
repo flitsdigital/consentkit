@@ -3,24 +3,34 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "sync": "mkdir -p public/consent && for f in webflow/custom.css webflow/classes.css webflow/component.html webflow/clipboard.json dist/head.snippet.html; do curl -sfL https://raw.githubusercontent.com/flitsdigital/cookie-consent/main/$f -o public/consent/$(basename $f); done",
+    "prebuild": "npm run sync",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
+    "css-tree": "^3.2.1",
+    "culori": "^4.0.2",
     "next": "16.3.5",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/css-tree": "^3.2.0",
+    "@types/culori": "^4.0.1",
+    "@types/node": "^22.20.3",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.0.1"
   }
 }
