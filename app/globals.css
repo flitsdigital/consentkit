@@ -34,7 +34,7 @@
 .btn:active { transform: scale(0.97); }
 .btn:disabled { opacity: 0.5; pointer-events: none; }
 .btn-primary { background: var(--color-fg); color: #111; box-shadow: none; }
-@media (hover: hover) and (pointer: fine) { .btn-primary:hover { background: #fff; box-shadow: none; } }
+@media (hover: hover) and (pointer: fine) { .btn-primary:hover { background: #fff; } }
 .btn-ghost { background: transparent; box-shadow: none; color: var(--color-muted); }
 @media (hover: hover) and (pointer: fine) { .btn-ghost:hover { background: var(--color-raised); color: var(--color-fg); box-shadow: none; } }
 

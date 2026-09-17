@@ -3,8 +3,8 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ButtonGroup, ColorControl, Folder, Slider, TextControl, useDialKitController, type DialConfig } from "dialkit";
-import { formatHex, parse } from "culori";
-import { AUTO_VARS, COLOR_VARS, DEFAULTS, VAR_NAMES, contrast, deriveAuto, keyFromUrl, mapToVars, renderCustomCss, toPx, type Extracted, type VarName, type Vars } from "@/lib/mapping";
+import { parse } from "culori";
+import { AUTO_VARS, COLOR_VARS, DEFAULTS, VAR_NAMES, contrast, deriveAuto, hex, keyFromUrl, mapToVars, renderCustomCss, toPx, type Extracted, type VarName, type Vars } from "@/lib/mapping";
 
 type Files = { customCss: string; classesCss: string; componentHtml: string; clipboardJson: string; headSnippet: string; version: string };
 type Node = { _id: string; text?: boolean; v?: string; children?: string[]; data?: { xattr?: { name: string; value: string }[]; link?: { mode: string; url: string } } };
@@ -17,7 +17,6 @@ const PRIVACY_HREF = "/privacybeleid"; // href in component.html / clipboard.jso
 
 const CONTRAST_PAIRS: [VarName, VarName, string][] = [["--cb-color-accent-text", "--cb-color-accent", "Knop"], ["--cb-color", "--cb-color-background", "Tekst"], ["--cb-color", "--cb-color-surface", "Secundair"]];
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const hex = (v: string) => { const c = parse(v); return c ? formatHex(c) : "#000000"; };
 
 // DialKit-pad ↔ --cb-variabele. Sliders in px; kleuren als hex; schaduw/easing als tekst.
 const DIAL: Record<string, { v: VarName; range?: [number, number, number?]; text?: true }> = {
@@ -46,24 +45,18 @@ const DIAL: Record<string, { v: VarName; range?: [number, number, number?]; text
 type DialValues = Record<string, Record<string, string | number>>;
 
 const num = (d: (typeof DIAL)[string], v: string) => (d.v === "--cb-z-index" ? Number(v) : toPx(v) ?? toPx(DEFAULTS[d.v])!);
-function dialConfig(vars: Vars) {
-  const cfg: Record<string, Record<string, unknown>> = {};
+const dialValue = (d: (typeof DIAL)[string], v: string) => (d.text ? v : d.range ? num(d, v) : hex(v));
+// Zelfde vorm als de DialKit-config: { folder: { key: value } }
+const toDial = (vars: Vars, config = false) => {
+  const out: Record<string, Record<string, unknown>> = {};
   for (const [path, d] of Object.entries(DIAL)) {
     const [folder, k] = path.split(".");
-    cfg[folder] ??= {};
-    cfg[folder][k] = d.text ? { type: "text", default: vars[d.v] } : d.range ? [num(d, vars[d.v]), ...d.range] : hex(vars[d.v]);
-  }
-  return cfg as DialConfig;
-}
-const toDial = (vars: Vars) => {
-  const out: DialValues = {};
-  for (const [path, d] of Object.entries(DIAL)) {
-    const [folder, k] = path.split(".");
-    out[folder] ??= {};
-    out[folder][k] = d.text ? vars[d.v] : d.range ? num(d, vars[d.v]) : hex(vars[d.v]);
+    const v = dialValue(d, vars[d.v]);
+    (out[folder] ??= {})[k] = !config ? v : d.text ? { type: "text", default: v } : d.range ? [v, ...d.range] : v;
   }
   return out;
 };
+const dialConfig = (vars: Vars) => toDial(vars, true) as DialConfig;
 const toVars = (values: DialValues): Vars => {
   const vars = { ...DEFAULTS } as Vars;
   for (const [path, d] of Object.entries(DIAL)) {
@@ -74,7 +67,7 @@ const toVars = (values: DialValues): Vars => {
   }
   return vars;
 };
-const pathOf = (n: VarName) => Object.entries(DIAL).find(([, d]) => d.v === n)![0];
+const PATH_OF = Object.fromEntries(Object.entries(DIAL).map(([p, d]) => [d.v, p])) as Record<VarName, string>;
 const COLOR_TARGETS = Object.entries(DIAL).filter(([, d]) => COLOR_VARS.includes(d.v)).map(([p]) => ({ path: p, label: p.split(".")[1] }));
 const RADIUS_TARGETS = [{ path: "maten.kaartRadius", label: "Kaart" }, { path: "maten.knopRadius", label: "Knop" }];
 const FONT_TARGETS = [{ path: "typografie.tekst", label: "Tekst" }, { path: "typografie.klein", label: "Klein" }, { path: "typografie.titel", label: "Titel" }];
@@ -117,7 +110,7 @@ export function Configurator({ files }: { files: Files }) {
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
-      if (over !== from) setCats((cs) => { const n = [...cs]; const [m] = n.splice(from, 1); n.splice(over, 0, m); return n; });
+      if (over !== from) setCats((cs) => cs.toSpliced(from, 1).toSpliced(over, 0, cs[from]));
       setDrag({ from: null, over: null });
     };
     window.addEventListener("pointermove", onMove);
@@ -134,7 +127,7 @@ export function Configurator({ files }: { files: Files }) {
       return !p && (AUTO_VARS as readonly string[]).includes(n) ? [[n, "auto"]] : [];
     })));
 
-  const [config] = useState(() => dialConfig(Object.fromEntries(VAR_NAMES.map((n) => [n, (params.get(n.slice(2)) ?? DEFAULTS[n]).replace(/^var\(.*$/, DEFAULTS[n])])) as Vars));
+  const [config] = useState(() => dialConfig(Object.fromEntries(VAR_NAMES.map((n) => { const p = params.get(n.slice(2)); return [n, p && !p.startsWith("var(") ? p : DEFAULTS[n]]; })) as Vars));
   const dial = useDialKitController("Banner", config, { id: "banner" });
   const values = dial.values as unknown as DialValues;
   const resolved = useMemo(() => toVars(values), [values]); // altijd hex/px: preview + contrast
@@ -142,13 +135,13 @@ export function Configurator({ files }: { files: Files }) {
   // Auto-kleuren volgen tekst/achtergrond/accent
   useEffect(() => {
     const auto = deriveAuto(resolved);
-    for (const n of AUTO_VARS) if (bindings[n] === "auto" && resolved[n] !== auto[n]) dial.setValue(pathOf(n), auto[n]);
+    for (const n of AUTO_VARS) if (bindings[n] === "auto" && resolved[n] !== auto[n]) dial.setValue(PATH_OF[n], auto[n]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolved["--cb-color"], resolved["--cb-color-background"], resolved["--cb-color-accent"], bindings]);
   const siteVars = useMemo(() => (extracted?.variables ?? []).filter((v) => !v.name.startsWith("--cb-") && (/^(#|rgb|hsl|oklch)/i.test(v.value) || /^[a-z]+$/i.test(v.value)) && parse(v.value)), [extracted]);
   const bind = (n: VarName, name: string | null, value: string) => {
     setBindings((b) => { const next = { ...b }; if (name) next[n] = name; else delete next[n]; return next; });
-    dial.setValue(pathOf(n), hex(value));
+    dial.setValue(PATH_OF[n], hex(value));
   };
 
   // Deelbare state: alles wat afwijkt van de default in de querystring
@@ -171,9 +164,9 @@ export function Configurator({ files }: { files: Files }) {
       if (!res.ok) throw new Error(json.error);
       setExtracted(json);
       const found = new Map((json as Extracted).variables.map((v) => [v.name, v.value]));
-      for (const [n, name] of Object.entries(bindings)) if (found.has(name)) dial.setValue(pathOf(n as VarName), hex(found.get(name)!));
+      for (const [n, name] of Object.entries(bindings)) if (found.has(name)) dial.setValue(PATH_OF[n as VarName], hex(found.get(name)!));
       if (apply) {
-        dial.setValues(toDial(mapToVars(json)));
+        dial.setValues(toDial(mapToVars(json)) as DialValues);
         setBindings((b) => ({ ...b, ...Object.fromEntries(AUTO_VARS.map((n) => [n, "auto"])) }));
         setKey(keyFromUrl(target));
       }
@@ -198,22 +191,20 @@ export function Configurator({ files }: { files: Files }) {
   // Rij 1 (Noodzakelijk) en rij 2 (Statistieken) uit de bron zijn de templates voor vaste resp. schakelbare categorieën.
   const fill = (tpl: string, from: Cat, to: Cat) => tpl.replaceAll(`>${esc(from.title)}<`, `>${esc(to.title)}<`).replaceAll(`aria-label="${esc(from.title)}"`, `aria-label="${esc(to.title)}"`).replaceAll(`>${esc(from.text)}<`, `>${esc(to.text)}<`).replaceAll(`data-cb-toggle="${from.key}"`, `data-cb-toggle="${esc(to.key)}"`);
   const applyTextsHtml = (html: string) => {
-    let h = GENERAL.reduce((acc, [i]) => acc.replaceAll(`>${esc(originals[i])}<`, `>${esc(texts[i])}<`), html).replace(`href="${PRIVACY_HREF}"`, `href="${esc(privacy)}"`);
+    const h = GENERAL.reduce((acc, [i]) => acc.replaceAll(`>${esc(originals[i])}<`, `>${esc(texts[i])}<`), html).replace(`href="${PRIVACY_HREF}"`, `href="${esc(privacy)}"`);
     const [before, rest] = h.split('<div data-cb="prefs" class="cb-prefs">');
     const [inner, after] = rest.split('<div class="cb-actions">');
     const [, ...rows] = inner.split('<div class="cb-row">');
     const close = rows[rows.length - 1].slice(rows[rows.length - 1].lastIndexOf("</div>")); // sluit-div van cb-prefs
-    const tpl = [rows[0], rows[1].slice(0, rows[1].length)];
-    const body = cats.map((c) => '<div class="cb-row">' + fill(c.locked ? tpl[0] : tpl[1], defaultCats[c.locked ? 0 : 1], c)).join("");
-    h = before + '<div data-cb="prefs" class="cb-prefs">' + body + close + '<div class="cb-actions">' + after;
-    return h;
+    const body = cats.map((c) => '<div class="cb-row">' + fill(rows[c.locked ? 0 : 1], defaultCats[c.locked ? 0 : 1], c)).join("");
+    return before + '<div data-cb="prefs" class="cb-prefs">' + body + close + '<div class="cb-actions">' + after;
   };
   const clipboardJson = () => {
     const src = clipboard.payload.nodes;
     const byId = new Map(src.map((n) => [n._id, n]));
     const prefs = src.find((n) => n.data?.xattr?.some((a) => a.name === "data-cb" && a.value === "prefs"))!;
     const subtree = (id: string): string[] => [id, ...(byId.get(id)?.children ?? []).flatMap(subtree)];
-    const oldRows = prefs.children!.flatMap(subtree);
+    const oldRows = new Set(prefs.children!.flatMap(subtree));
     const out: Node[] = [];
     const clone = (id: string, from: Cat, to: Cat): string => {
       const n = byId.get(id)!;
@@ -225,7 +216,7 @@ export function Configurator({ files }: { files: Files }) {
       return c._id;
     };
     const rowIds = cats.map((c) => clone(prefs.children![c.locked ? 0 : 1], defaultCats[c.locked ? 0 : 1], c));
-    const nodes = src.filter((n) => !oldRows.includes(n._id)).map((n) => {
+    const nodes = src.filter((n) => !oldRows.has(n._id)).map((n) => {
       if (n === prefs) return { ...n, children: rowIds };
       if (n.text) { const i = originals.indexOf(n.v ?? ""); return { ...n, v: GENERAL.some(([g]) => g === i) ? texts[i] : n.v }; }
       const link = n.data?.link?.url === PRIVACY_HREF ? { ...n.data.link, url: privacy } : n.data?.link;
@@ -286,6 +277,7 @@ document.addEventListener("click", function (e) {
   const shortName = (name: string) => name.replace(/^--_?/, "").replace(/\\.*$/, "");
   const [varQuery, setVarQuery] = useState("");
   // Kleurrij: DialKit ColorControl + variabelen-picker (Figma-stijl). Gekoppeld → chip met naam i.p.v. hex.
+  const auto = deriveAuto(resolved);
   const colorRow = (path: string) => {
     const d = DIAL[path];
     const bound = bindings[d.v];
@@ -310,8 +302,8 @@ document.addEventListener("click", function (e) {
           <input type="search" value={varQuery} onChange={(e) => setVarQuery(e.target.value)} placeholder="Zoek variabele…" className="field mb-1 h-7 text-xs" autoFocus />
           <div className="max-h-64 overflow-y-auto">
             {(AUTO_VARS as readonly string[]).includes(d.v) && !q && (
-              <button type="button" className="menu-item" popoverTarget={id} popoverTargetAction="hide" onClick={() => bind(d.v, "auto", deriveAuto(resolved)[d.v as (typeof AUTO_VARS)[number]])} aria-current={bound === "auto"}>
-                <span className="swatch size-4 shrink-0 rounded" style={{ background: deriveAuto(resolved)[d.v as (typeof AUTO_VARS)[number]] }} />
+              <button type="button" className="menu-item" popoverTarget={id} popoverTargetAction="hide" onClick={() => bind(d.v, "auto", auto[d.v as (typeof AUTO_VARS)[number]])} aria-current={bound === "auto"}>
+                <span className="swatch size-4 shrink-0 rounded" style={{ background: auto[d.v as (typeof AUTO_VARS)[number]] }} />
                 <span className="text-[12px]">Auto</span><span className="ml-auto text-[10px] text-muted">afgeleid</span>
               </button>
             )}
@@ -342,7 +334,6 @@ document.addEventListener("click", function (e) {
   const paths = (folder: string) => Object.keys(DIAL).filter((p) => p.startsWith(folder + "."));
 
   const domain = (() => { try { return new URL(url).hostname; } catch { return "Nieuwe banner"; } })();
-  const colorVars = siteVars;
 
   return (
     <div className="grid h-full grid-cols-[264px_1fr_336px] grid-rows-[48px_44px_1fr]">
@@ -399,10 +390,10 @@ document.addEventListener("click", function (e) {
                   ))}
                 </div>
               </Section>
-              {colorVars.length > 0 && (
-                <Section title="Variabelen" hint={`${colorVars.length}`}>
+              {siteVars.length > 0 && (
+                <Section title="Variabelen" hint={`${siteVars.length}`}>
                   <div className="space-y-0.5">
-                    {colorVars.slice(0, 40).map((v, i) => (
+                    {siteVars.slice(0, 40).map((v, i) => (
                       <span key={v.name} className="relative block">
                         <button type="button" popoverTarget={`v${i}`} title={v.name} className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors duration-150 hover:bg-raised">
                           <span className="swatch size-4 shrink-0 rounded" style={{ background: v.value }} />
@@ -478,7 +469,7 @@ document.addEventListener("click", function (e) {
                 );
               })}
               <div className="pt-2">
-                <ButtonGroup buttons={[{ label: "+ Nieuwe categorie", onClick: () => setCats((cs) => [...cs, { key: `categorie_${cs.length}`, title: "Nieuwe categorie", text: "", signals: "" }]) }]} />
+                <ButtonGroup buttons={[{ label: "+ Nieuwe categorie", onClick: () => setCats((cs) => [...cs, { key: `categorie_${Date.now() % 10000}`, title: "Nieuwe categorie", text: "", signals: "" }]) }]} />
               </div>
             </div>
           )}
@@ -524,10 +515,10 @@ document.addEventListener("click", function (e) {
               })}
             </div>
             <div className="dialkit-root px-3 pb-4" data-theme="dark">
-              <Folder title="Kleuren" inline><div className="space-y-1.5">{paths("kleuren").map(colorRow)}</div></Folder>
-              <Folder title="Typografie" inline><div className="space-y-1.5">{paths("typografie").map(slider)}</div></Folder>
-              <Folder title="Maten" inline><div className="space-y-1.5">{paths("maten").map(slider)}</div></Folder>
-              <Folder title="Effect" inline defaultOpen={false}><div className="space-y-1.5">{paths("effect").map(text)}</div></Folder>
+              <Folder title="Kleuren" inline><div className="flex flex-col gap-1.5">{paths("kleuren").map(colorRow)}</div></Folder>
+              <Folder title="Typografie" inline><div className="flex flex-col gap-1.5">{paths("typografie").map(slider)}</div></Folder>
+              <Folder title="Maten" inline><div className="flex flex-col gap-1.5">{paths("maten").map(slider)}</div></Folder>
+              <Folder title="Effect" inline defaultOpen={false}><div className="flex flex-col gap-1.5">{paths("effect").map(text)}</div></Folder>
             </div>
           </div>
           {rightTab === "export" && (

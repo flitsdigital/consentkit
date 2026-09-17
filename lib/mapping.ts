@@ -71,10 +71,9 @@ export function toPx(value: string): number | undefined {
 
 const L = (c: Color) => oklch(c)?.l ?? 0;
 const C = (c: Color) => oklch(c)?.c ?? 0;
-const hex = (v: string) => {
-  const c = parse(v);
-  return c && (c.alpha ?? 1) === 1 ? formatHex(c) : undefined;
-};
+const opaque = (v: string) => { const c = parse(v); return c && (c.alpha ?? 1) === 1 ? formatHex(c) : undefined; };
+/** Elke kleurnotatie → hex; onparseerbaar (bv. var()) → zwart. */
+export const hex = (v: string) => { const c = parse(v); return c ? formatHex(c) : "#000000"; };
 
 export function mapToVars(x: Extracted): Vars {
   const vars: Vars = { ...DEFAULTS };
@@ -86,13 +85,13 @@ export function mapToVars(x: Extracted): Vars {
   // --cb-color: body color, anders donkerste veelvoorkomende kleur
   const common = colors.filter((c) => c.count >= 2);
   const darkest = (common.length ? common : colors).slice().sort((a, b) => L(a.parsed) - L(b.parsed))[0];
-  vars["--cb-color"] = hex(x.body.color ?? "") ?? (darkest ? formatHex(darkest.parsed) : DEFAULTS["--cb-color"]);
-  vars["--cb-color-background"] = hex(x.body.background ?? "") ?? "#fff";
+  vars["--cb-color"] = opaque(x.body.color ?? "") ?? (darkest ? formatHex(darkest.parsed) : DEFAULTS["--cb-color"]);
+  vars["--cb-color-background"] = opaque(x.body.background ?? "") ?? "#fff";
 
   // accent: Webflow-variabele met primary/accent/brand, anders meest voorkomende verzadigde kleur
-  const brandVar = x.variables.find((v) => /primary|accent|brand/i.test(v.name) && !v.name.startsWith("--cb-") && hex(v.value) && C(parse(v.value)!) > 0.04);
+  const brandVar = x.variables.find((v) => /primary|accent|brand/i.test(v.name) && !v.name.startsWith("--cb-") && opaque(v.value) && C(parse(v.value)!) > 0.04);
   const saturated = colors.find((c) => C(c.parsed) > 0.04 && L(c.parsed) > 0.2 && L(c.parsed) < 0.9);
-  vars["--cb-color-accent"] = (brandVar && hex(brandVar.value)) ?? (saturated ? formatHex(saturated.parsed) : DEFAULTS["--cb-color-accent"]);
+  vars["--cb-color-accent"] = (brandVar && opaque(brandVar.value)) ?? (saturated ? formatHex(saturated.parsed) : DEFAULTS["--cb-color-accent"]);
 
   Object.assign(vars, deriveAuto(vars));
 

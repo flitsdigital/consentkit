@@ -1,7 +1,7 @@
 import { parse, walk, generate, type CssNode, type Rule } from "css-tree";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
-import { parse as parseColor, formatHex, formatHex8 } from "culori";
+import { parse as parseColor, formatHex } from "culori";
 import type { Extracted } from "./mapping";
 
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -32,11 +32,8 @@ async function fetchText(url: URL, signal: AbortSignal): Promise<string> {
   return text;
 }
 
-const normColor = (v: string) => {
-  const c = parseColor(v.trim());
-  if (!c || c.alpha === 0) return;
-  return (c.alpha ?? 1) === 1 ? formatHex(c) : formatHex8(c);
-};
+// Alleen dekkende kleuren; (half)transparant is nooit een bannerkleur
+const normColor = (v: string) => { const c = parseColor(v.trim()); return c && (c.alpha ?? 1) === 1 ? formatHex(c) : undefined; };
 
 export function extractFromCss(sheets: string[]): Extracted {
   const variables = new Map<string, string>();
