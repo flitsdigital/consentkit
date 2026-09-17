@@ -8,7 +8,7 @@ test("URL invullen → preview toont accent, Copy to Webflow zet application/jso
   await page.getByPlaceholder("https://klant.webflow.io/").fill("https://veenstra-edelmetaal.webflow.io/");
   await page.getByRole("button", { name: "Stijl ophalen" }).click();
 
-  await expect(page.getByLabel("--cb-color-accent kleur")).toHaveValue("#0f4c81");
+  await expect(page.getByText("#0f4c81").first()).toBeVisible();
   const frame = page.frameLocator('[data-testid="preview"]');
   await expect(frame.locator("[data-cb-action=accept]")).toHaveCSS("background-color", "rgb(15, 76, 129)");
   await expect(page).toHaveURL(/cb-color-accent=%230f4c81/);
@@ -18,6 +18,7 @@ test("URL invullen → preview toont accent, Copy to Webflow zet application/jso
   await page.evaluate(() => {
     window.addEventListener("copy", (e) => ((window as unknown as { __wf: string }).__wf = e.clipboardData!.getData("application/json")));
   });
+  await page.getByRole("button", { name: "Exporteren" }).first().click();
   await page.getByRole("button", { name: "Copy to Webflow" }).click();
   const json = await page.evaluate(() => (window as unknown as { __wf: string }).__wf);
   expect(JSON.parse(json).type).toBe("@webflow/XscpData");

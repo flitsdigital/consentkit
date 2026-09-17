@@ -1,1 +1,94 @@
 @import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-sans), system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, monospace;
+  --color-bg: #161616;
+  --color-panel: #1c1c1c;
+  --color-raised: #242424;
+  --color-fg: #f2f2f2;
+  --color-muted: #8f8f8f;
+  --color-line: rgba(255, 255, 255, 0.08);
+  --color-accent: #ec4d94;
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+:root {
+  --shadow-ring: 0 0 0 1px oklch(1 0 0 / 0.08);
+  --shadow-ring-hover: 0 0 0 1px oklch(1 0 0 / 0.13);
+  --shadow-pop: 0 0 0 1px oklch(1 0 0 / 0.1), 0 12px 32px oklch(0 0 0 / 0.5);
+}
+
+/* Pressables */
+.btn {
+  @apply inline-flex h-8 shrink-0 select-none items-center justify-center gap-1.5 rounded-lg px-3 text-[13px] font-medium whitespace-nowrap text-fg;
+  box-shadow: var(--shadow-ring);
+  background: var(--color-raised);
+  transition-property: transform, background-color, box-shadow;
+  transition-duration: 160ms;
+  transition-timing-function: var(--ease-out-strong);
+}
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover { background: #2c2c2c; box-shadow: var(--shadow-ring-hover); }
+}
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.5; pointer-events: none; }
+.btn-primary { background: var(--color-fg); color: #111; box-shadow: none; }
+@media (hover: hover) and (pointer: fine) { .btn-primary:hover { background: #fff; box-shadow: none; } }
+.btn-ghost { background: transparent; box-shadow: none; color: var(--color-muted); }
+@media (hover: hover) and (pointer: fine) { .btn-ghost:hover { background: var(--color-raised); color: var(--color-fg); box-shadow: none; } }
+
+/* Segmented control */
+.seg { @apply inline-flex h-8 items-center gap-0.5 rounded-lg p-0.5; background: rgba(255, 255, 255, 0.06); }
+.seg > button {
+  @apply h-7 rounded-md px-2.5 text-[13px] font-medium text-muted;
+  transition-property: transform, background-color, color;
+  transition-duration: 150ms;
+  transition-timing-function: var(--ease-out-strong);
+}
+.seg > button:active { transform: scale(0.97); }
+.seg > button[aria-pressed="true"] { background: var(--color-raised); color: var(--color-fg); box-shadow: var(--shadow-ring); }
+
+/* Inputs */
+.field {
+  @apply h-8 w-full rounded-lg bg-transparent px-2.5 text-[13px] text-fg placeholder:text-muted;
+  box-shadow: var(--shadow-ring);
+  transition: box-shadow 150ms var(--ease-out-strong);
+}
+.field:focus { outline: none; box-shadow: 0 0 0 1px oklch(1 0 0 / 0.35); }
+textarea.field { @apply h-auto py-1.5 leading-snug; }
+
+/* Native popover menu */
+.menu {
+  @apply m-0 min-w-44 rounded-xl p-1 text-[13px];
+  background: #262626;
+  box-shadow: var(--shadow-pop);
+  position-area: bottom span-right;
+  margin-top: 4px;
+  transform-origin: top left;
+  opacity: 0;
+  transform: scale(0.96);
+  transition: opacity 150ms var(--ease-out-strong), transform 150ms var(--ease-out-strong), display 150ms allow-discrete, overlay 150ms allow-discrete;
+}
+.menu:popover-open { opacity: 1; transform: none; @starting-style { opacity: 0; transform: scale(0.96); } }
+.menu > button { @apply flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-fg; }
+@media (hover: hover) and (pointer: fine) { .menu > button:hover { background: rgba(255, 255, 255, 0.08); } }
+.menu-title { @apply px-2 pt-1 pb-1.5 text-[11px] font-medium tracking-wide text-muted uppercase; }
+
+/* Canvas */
+.canvas {
+  background-color: var(--color-bg);
+  background-image: radial-gradient(oklch(1 0 0 / 0.09) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.swatch { outline: 1px solid oklch(1 0 0 / 0.1); outline-offset: -1px; }
+
+/* DialKit inline: laat het panel het rechterpaneel vullen */
+.dialkit-root[data-mode="inline"] { --dial-glass-bg: transparent; --dial-shadow: none; }
+
+pre.code { @apply overflow-auto rounded-lg p-3 font-mono text-[11px] leading-relaxed text-fg/80; background: #111; box-shadow: var(--shadow-ring); }
+
+@media (prefers-reduced-motion: reduce) {
+  .btn, .seg > button, .menu { transition-duration: 0ms; }
+}

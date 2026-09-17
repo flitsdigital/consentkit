@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { extractFromCss } from "./extract";
-import { DEFAULTS, mapToVars, renderCustomCss, keyFromUrl, contrast } from "./mapping";
+import { DEFAULTS, mapToVars, renderCustomCss, keyFromUrl, toPx } from "./mapping";
 import { readFileSync } from "node:fs";
 
 const webflow = `
@@ -32,15 +32,16 @@ describe("mapToVars", () => {
     expect(v["--cb-color"]).toBe("#111111");
     expect(v["--cb-color-accent"]).toBe("#e63946");
     expect(v["--cb-border-radius"]).toBe("4px");
-    expect(v["--cb-button-radius"]).toBe("calc(var(--cb-border-radius) / 1.5)");
-    expect(v["--cb-color-surface"]).toMatch(/^color-mix/);
+    expect(v["--cb-button-radius"]).toBe("3px");
+    expect(v["--cb-color-surface"]).toBe("#f1f1f1");
   });
 
   it("alleen zwart/wit → default accent", () => {
     const v = mapToVars(extractFromCss([`body{color:#000;background-color:#fff}.a{color:#000}`]));
     expect(v["--cb-color"]).toBe("#000000");
     expect(v["--cb-color-accent"]).toBe(DEFAULTS["--cb-color-accent"]);
-    expect(contrast(v["--cb-color-switch-off"], v["--cb-color-background"], v)).toBeGreaterThan(1);
+    expect(v["--cb-color-switch-off"]).toBe("#d1d1d1");
+    expect(v["--cb-font-size-small"]).toBe("13px");
   });
 });
 
@@ -52,6 +53,12 @@ it("renderCustomCss vervangt alleen :root-waarden", () => {
   expect(out).toContain("--cb-color-accent-text: #1b020d; /* donker op roze");
   expect(out).toContain(":root { --cb-offset: 8px; --cb-padding: 20px; }"); // media-query blijft
   expect(out.replace("--cb-color-accent: #123456", "--cb-color-accent: #ec4d94").replace("--cb-offset: 20px", "--cb-offset: 16px")).toBe(src);
+});
+
+it("toPx", () => {
+  expect(toPx(".5rem")).toBe(8);
+  expect(toPx("17px")).toBe(17);
+  expect(toPx("50%")).toBeUndefined();
 });
 
 it("keyFromUrl", () => {

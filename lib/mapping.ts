@@ -38,25 +38,21 @@ export type Vars = Record<VarName, string>;
 export const VAR_NAMES = Object.keys(DEFAULTS) as VarName[];
 export const COLOR_VARS = VAR_NAMES.filter((n) => n.startsWith("--cb-color"));
 
-/** Lost var(--cb-*) en color-mix(in srgb, A p%, B) op naar een culori-kleur; undefined als het niet lukt. */
-export function resolveColor(value: string, vars: Vars, depth = 0): Color | undefined {
-  if (depth > 5) return;
-  const v = value.trim();
-  const ref = v.match(/^var\((--cb-[\w-]+)\)$/);
-  if (ref) return resolveColor(vars[ref[1] as VarName] ?? "", vars, depth + 1);
-  const mix = v.match(/^color-mix\(in srgb,\s*(.+?)\s+(\d+(?:\.\d+)?)%\s*,\s*(.+)\)$/);
-  if (mix) {
-    const a = resolveColor(mix[1], vars, depth + 1);
-    const b = resolveColor(mix[3], vars, depth + 1);
-    return a && b ? interpolate([b, a], "rgb")(Number(mix[2]) / 100) : undefined;
-  }
-  return parse(v);
+export function contrast(a: string, b: string): number | undefined {
+  const ca = parse(a);
+  const cb = parse(b);
+  return ca && cb ? Math.round(wcagContrast(ca, cb) * 100) / 100 : undefined;
 }
 
-export function contrast(a: string, b: string, vars: Vars): number | undefined {
-  const ca = resolveColor(a, vars);
-  const cb = resolveColor(b, vars);
-  return ca && cb ? Math.round(wcagContrast(ca, cb) * 100) / 100 : undefined;
+/** Mengt `a` voor `p` (0–1) in `b`; alle waarden concreet (DialKit-kleurcontrols verstaan geen color-mix()). */
+const mix = (a: string, b: string, p: number) => formatHex(interpolate([parse(b)!, parse(a)!], "rgb")(p));
+
+/** "16px" → 16, ".5rem" → 8; undefined voor alles wat niet naar px te vertalen is. */
+export function toPx(value: string): number | undefined {
+  const m = value.trim().match(/^([\d.]+)(px|rem|em)?$/);
+  if (!m) return;
+  const n = parseFloat(m[1]);
+  return Math.round(m[2] && m[2] !== "px" ? n * 16 : n);
 }
 
 const L = (c: Color) => oklch(c)?.l ?? 0;
@@ -85,8 +81,8 @@ export function mapToVars(x: Extracted): Vars {
   vars["--cb-color-accent"] = (brandVar && hex(brandVar.value)) ?? (saturated ? formatHex(saturated.parsed) : DEFAULTS["--cb-color-accent"]);
 
   // accent-text: wit als ≥4.5:1, anders --cb-color als die het haalt, anders wat het hoogst scoort
-  const white = contrast("#fff", vars["--cb-color-accent"], vars) ?? 0;
-  const dark = contrast(vars["--cb-color"], vars["--cb-color-accent"], vars) ?? 0;
+  const white = contrast("#fff", vars["--cb-color-accent"]) ?? 0;
+  const dark = contrast(vars["--cb-color"], vars["--cb-color-accent"]) ?? 0;
   vars["--cb-color-accent-text"] = white >= 4.5 ? "#fff" : dark >= 4.5 ? vars["--cb-color"] : white >= dark ? "#fff" : vars["--cb-color"];
 
   // surface: lichtste grijs/tint (niet wit), anders color-mix
@@ -94,19 +90,20 @@ export function mapToVars(x: Extracted): Vars {
   const surface = colors
     .filter((c) => C(c.parsed) < 0.05 && L(c.parsed) > 0.85 && Math.abs(L(c.parsed) - bgL) > 0.01)
     .sort((a, b) => L(b.parsed) - L(a.parsed))[0];
-  vars["--cb-color-surface"] = surface ? formatHex(surface.parsed) : "color-mix(in srgb, var(--cb-color) 6%, var(--cb-color-background))";
-  vars["--cb-color-switch-off"] = "color-mix(in srgb, var(--cb-color) 18%, var(--cb-color-background))";
-  vars["--cb-color-focus"] = "var(--cb-color)";
+  vars["--cb-color-surface"] = surface ? formatHex(surface.parsed) : mix(vars["--cb-color"], vars["--cb-color-background"], 0.06);
+  vars["--cb-color-switch-off"] = mix(vars["--cb-color"], vars["--cb-color-background"], 0.18);
+  vars["--cb-color-focus"] = vars["--cb-color"];
 
   // radius: meest voorkomende > 0, tweede als button-radius
-  const radii = x.radii.filter((r) => parseFloat(r.value) > 0).sort((a, b) => b.count - a.count);
-  if (radii[0]) vars["--cb-border-radius"] = radii[0].value;
-  vars["--cb-button-radius"] = radii[1]?.value ?? "calc(var(--cb-border-radius) / 1.5)";
+  const radii = x.radii.map((r) => ({ px: toPx(r.value), count: r.count })).filter((r): r is { px: number; count: number } => !!r.px).sort((a, b) => b.count - a.count);
+  if (radii[0]) vars["--cb-border-radius"] = `${radii[0].px}px`;
+  vars["--cb-button-radius"] = `${radii[1]?.px ?? Math.round(toPx(vars["--cb-border-radius"])! / 1.5)}px`;
 
-  const fs = x.fontSizes.p ?? x.fontSizes.body;
-  if (fs) vars["--cb-font-size"] = fs;
-  if (x.fontSizes.h3) vars["--cb-font-size-title"] = x.fontSizes.h3;
-  vars["--cb-font-size-small"] = "calc(var(--cb-font-size) - 2px)";
+  const fs = toPx(x.fontSizes.p ?? x.fontSizes.body ?? "");
+  if (fs) vars["--cb-font-size"] = `${fs}px`;
+  const h3 = toPx(x.fontSizes.h3 ?? "");
+  if (h3) vars["--cb-font-size-title"] = `${h3}px`;
+  vars["--cb-font-size-small"] = `${toPx(vars["--cb-font-size"])! - 2}px`;
   return vars;
 }
 
