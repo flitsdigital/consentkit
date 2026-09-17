@@ -2,15 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ColorControl, Folder, Slider, TextControl, useDialKitController, type DialConfig } from "dialkit";
+import { ButtonGroup, ColorControl, Folder, Slider, TextControl, useDialKitController, type DialConfig } from "dialkit";
 import { formatHex, parse } from "culori";
 import { AUTO_VARS, COLOR_VARS, DEFAULTS, VAR_NAMES, contrast, deriveAuto, keyFromUrl, mapToVars, renderCustomCss, toPx, type Extracted, type VarName, type Vars } from "@/lib/mapping";
 
 type Files = { customCss: string; classesCss: string; componentHtml: string; clipboardJson: string; headSnippet: string; version: string };
-type Node = { text?: boolean; v?: string; data?: { xattr?: { name: string; value: string }[]; link?: { mode: string; url: string } } };
+type Node = { _id: string; text?: boolean; v?: string; children?: string[]; data?: { xattr?: { name: string; value: string }[]; link?: { mode: string; url: string } } };
+type Cat = { key: string; title: string; text: string; signals: string; locked?: boolean };
+// Tekstnodes in clipboard.json, in volgorde: 0 titel, 1 tekst, 2 privacylink, 3–8 drie categorieën (titel, tekst), 9–12 knoppen
+const GENERAL: [number, string][] = [[0, "Titel"], [1, "Tekst"], [2, "Privacylink"], [9, "Knop: instellingen"], [10, "Knop: opslaan"], [11, "Knop: weigeren"], [12, "Knop: accepteren"]];
+const DEFAULT_SIGNALS: Record<string, string> = { analytics: "analytics_storage", marketing: "ad_storage, ad_user_data, ad_personalization" };
+const slug = (t: string) => t.toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "categorie";
 const PRIVACY_HREF = "/privacybeleid"; // href in component.html / clipboard.json
 
-const TEXT_LABELS = ["Titel", "Tekst", "Privacylink", "Categorie 1", "Categorie 1 – tekst", "Categorie 2", "Categorie 2 – tekst", "Categorie 3", "Categorie 3 – tekst", "Knop: instellingen", "Knop: opslaan", "Knop: weigeren", "Knop: accepteren"];
 const CONTRAST_PAIRS: [VarName, VarName, string][] = [["--cb-color-accent-text", "--cb-color-accent", "Knop"], ["--cb-color", "--cb-color-background", "Tekst"], ["--cb-color", "--cb-color-surface", "Secundair"]];
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const hex = (v: string) => { const c = parse(v); return c ? formatHex(c) : "#000000"; };
@@ -83,6 +87,12 @@ export function Configurator({ files }: { files: Files }) {
 
   const [url, setUrl] = useState(params.get("url") ?? "");
   const [texts, setTexts] = useState<string[]>(() => originals.map((o, i) => params.get(`t${i}`) ?? o));
+  const defaultCats = useMemo<Cat[]>(() => [
+    { key: "", title: originals[3], text: originals[4], signals: "", locked: true },
+    { key: "analytics", title: originals[5], text: originals[6], signals: DEFAULT_SIGNALS.analytics },
+    { key: "marketing", title: originals[7], text: originals[8], signals: DEFAULT_SIGNALS.marketing },
+  ], [originals]);
+  const [cats, setCats] = useState<Cat[]>(() => { try { return JSON.parse(params.get("cats") ?? "") as Cat[]; } catch { return defaultCats; } });
   const [key, setKey] = useState(params.get("key") ?? "");
   const [privacy, setPrivacy] = useState(params.get("privacy") ?? PRIVACY_HREF);
   const [extracted, setExtracted] = useState<Extracted | null>(null);
@@ -127,9 +137,10 @@ export function Configurator({ files }: { files: Files }) {
     if (key) q.set("key", key);
     if (privacy !== PRIVACY_HREF) q.set("privacy", privacy);
     VAR_NAMES.forEach((n) => vars[n] !== DEFAULTS[n] && bindings[n] !== "auto" && q.set(n.slice(2), vars[n]));
-    texts.forEach((t, i) => t !== originals[i] && q.set(`t${i}`, t));
+    GENERAL.forEach(([i]) => texts[i] !== originals[i] && q.set(`t${i}`, texts[i]));
+    if (JSON.stringify(cats) !== JSON.stringify(defaultCats)) q.set("cats", JSON.stringify(cats));
     window.history.replaceState(null, "", q.size ? `?${q}` : location.pathname);
-  }, [url, key, privacy, vars, texts, originals, bindings]);
+  }, [url, key, privacy, vars, texts, cats, defaultCats, originals, bindings]);
 
   async function extract(target: string, apply: boolean) {
     setStatus({ loading: true });
@@ -162,22 +173,51 @@ export function Configurator({ files }: { files: Files }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Teksten toepassen op HTML (preview) en clipboard-JSON (Copy to Webflow)
-  const applyTextsHtml = (html: string) => originals.reduce((h, o, i) => h.replaceAll(`>${esc(o)}<`, `>${esc(texts[i])}<`).replaceAll(`aria-label="${esc(o)}"`, `aria-label="${esc(texts[i])}"`), html).replace(`href="${PRIVACY_HREF}"`, `href="${esc(privacy)}"`);
+  // Teksten + categorieën toepassen op HTML (preview) en clipboard-JSON (Copy to Webflow).
+  // Rij 1 (Noodzakelijk) en rij 2 (Statistieken) uit de bron zijn de templates voor vaste resp. schakelbare categorieën.
+  const fill = (tpl: string, from: Cat, to: Cat) => tpl.replaceAll(`>${esc(from.title)}<`, `>${esc(to.title)}<`).replaceAll(`aria-label="${esc(from.title)}"`, `aria-label="${esc(to.title)}"`).replaceAll(`>${esc(from.text)}<`, `>${esc(to.text)}<`).replaceAll(`data-cb-toggle="${from.key}"`, `data-cb-toggle="${esc(to.key)}"`);
+  const applyTextsHtml = (html: string) => {
+    let h = GENERAL.reduce((acc, [i]) => acc.replaceAll(`>${esc(originals[i])}<`, `>${esc(texts[i])}<`), html).replace(`href="${PRIVACY_HREF}"`, `href="${esc(privacy)}"`);
+    const [before, rest] = h.split('<div data-cb="prefs" class="cb-prefs">');
+    const [inner, after] = rest.split('<div class="cb-actions">');
+    const [, ...rows] = inner.split('<div class="cb-row">');
+    const close = rows[rows.length - 1].slice(rows[rows.length - 1].lastIndexOf("</div>")); // sluit-div van cb-prefs
+    const tpl = [rows[0], rows[1].slice(0, rows[1].length)];
+    const body = cats.map((c) => '<div class="cb-row">' + fill(c.locked ? tpl[0] : tpl[1], defaultCats[c.locked ? 0 : 1], c)).join("");
+    h = before + '<div data-cb="prefs" class="cb-prefs">' + body + close + '<div class="cb-actions">' + after;
+    return h;
+  };
   const clipboardJson = () => {
-    const nodes = clipboard.payload.nodes.map((n) => {
-      if (n.text) return { ...n, v: texts[originals.indexOf(n.v ?? "")] ?? n.v };
-      const xattr = n.data?.xattr?.map((a) => (a.name === "aria-label" && originals.includes(a.value) ? { ...a, value: texts[originals.indexOf(a.value)] } : a));
+    const src = clipboard.payload.nodes;
+    const byId = new Map(src.map((n) => [n._id, n]));
+    const prefs = src.find((n) => n.data?.xattr?.some((a) => a.name === "data-cb" && a.value === "prefs"))!;
+    const subtree = (id: string): string[] => [id, ...(byId.get(id)?.children ?? []).flatMap(subtree)];
+    const oldRows = prefs.children!.flatMap(subtree);
+    const out: Node[] = [];
+    const clone = (id: string, from: Cat, to: Cat): string => {
+      const n = byId.get(id)!;
+      const c: Node = { ...n, _id: crypto.randomUUID() };
+      if (n.text) c.v = n.v === from.title ? to.title : n.v === from.text ? to.text : n.v;
+      if (n.data?.xattr) c.data = { ...n.data, xattr: n.data.xattr.map((a) => (a.name === "aria-label" && a.value === from.title ? { ...a, value: to.title } : a.name === "data-cb-toggle" ? { ...a, value: to.key } : a)) };
+      if (n.children) c.children = n.children.map((ch) => clone(ch, from, to));
+      out.push(c);
+      return c._id;
+    };
+    const rowIds = cats.map((c) => clone(prefs.children![c.locked ? 0 : 1], defaultCats[c.locked ? 0 : 1], c));
+    const nodes = src.filter((n) => !oldRows.includes(n._id)).map((n) => {
+      if (n === prefs) return { ...n, children: rowIds };
+      if (n.text) { const i = originals.indexOf(n.v ?? ""); return { ...n, v: GENERAL.some(([g]) => g === i) ? texts[i] : n.v }; }
       const link = n.data?.link?.url === PRIVACY_HREF ? { ...n.data.link, url: privacy } : n.data?.link;
-      return xattr || link ? { ...n, data: { ...n.data, xattr, link } } : n;
-    });
+      return link ? { ...n, data: { ...n.data, link } } : n;
+    }).concat(out);
     return JSON.stringify({ ...clipboard, payload: { ...clipboard.payload, nodes } });
   };
+  const categoriesJs = "{ " + cats.filter((c) => !c.locked && c.key).map((c) => `${c.key}: [${c.signals.split(",").map((x) => x.trim()).filter(Boolean).map((x) => `'${x}'`).join(", ")}]`).join(", ") + " }";
 
   const customCss = renderCustomCss(files.customCss, vars);
   const previewCss = renderCustomCss(files.customCss, resolved);
   const exportCss = `<style>\n${customCss}</style>`;
-  const headCode = `<script>window.FlitsConsent = { key: '${key || "flits_consent"}', version: 1, days: 180 };</script>\n${files.headSnippet.trim()}`;
+  const headCode = `<script>window.FlitsConsent = { key: '${key || "flits_consent"}', version: 1, days: 180, categories: ${categoriesJs} };</script>\n${files.headSnippet.trim()}`;
   const footerCode = `<script src="https://cdn.jsdelivr.net/gh/flitsdigital/cookie-consent@${files.version}/dist/consent.min.js" defer></script>`;
 
   const srcdoc = `<!doctype html><html><head><meta name="viewport" content="width=device-width"><style>${previewCss}</style><style>${files.classesCss}</style><style>
@@ -287,7 +327,7 @@ document.addEventListener("click", function (e) {
     <div className="grid h-full grid-cols-[264px_1fr_336px] grid-rows-[48px_44px_1fr]">
       {/* Topbar */}
       <header className="col-span-3 flex items-center border-b border-line px-4">
-        <div className="flex w-60 items-center gap-2 text-[13px] font-semibold tracking-tight"><span className="inline-block size-2.5 rounded-full bg-accent" /> consentkit</div>
+        <div className="flex w-60 items-center gap-2 text-[13px] font-semibold tracking-tight"><Cookie /> consentkit</div>
         <div className="flex-1 truncate text-center text-[13px] text-muted">{domain}</div>
         <div className="flex w-60 items-center justify-end gap-2">
           <button type="button" className="btn btn-ghost" onClick={() => copy("link", location.href)}>{copied === "link" ? <><Check /> Link gekopieerd</> : "Deel link"}</button>
@@ -377,18 +417,45 @@ document.addEventListener("click", function (e) {
             </div>
           ))}
           {leftTab === "teksten" && (
-            <div className="space-y-3">
-              {texts.map((t, i) => (
-                <label key={i} className="block">
-                  <span className="mb-1 block text-[11px] text-muted">{TEXT_LABELS[i] ?? `Tekst ${i + 1}`}</span>
-                  {t.length > 40
-                    ? <textarea value={t} rows={3} onChange={(e) => setTexts((s) => s.map((x, j) => (j === i ? e.target.value : x)))} className="field" />
-                    : <input type="text" value={t} onChange={(e) => setTexts((s) => s.map((x, j) => (j === i ? e.target.value : x)))} className="field" />}
-                  {i === 2 && (
-                    <input type="text" value={privacy} onChange={(e) => setPrivacy(e.target.value)} placeholder="/privacybeleid" aria-label="Privacylink – URL" className="field mt-1.5 font-mono text-xs" />
-                  )}
-                </label>
-              ))}
+            <div className="dialkit-root texts px-1 pb-4" data-theme="dark">
+              <Folder title="Algemeen" inline>
+                <div className="space-y-1.5">
+                  {GENERAL.map(([i, lbl]) => (
+                    <div key={i} className="contents">
+                      <TextControl label={lbl} value={texts[i]} onChange={(v) => setTexts((s) => s.map((x, j) => (j === i ? v : x)))} />
+                      {i === 2 && <TextControl label="Privacy-URL" value={privacy} onChange={setPrivacy} placeholder="/privacybeleid" />}
+                    </div>
+                  ))}
+                </div>
+              </Folder>
+              {cats.map((c, i) => {
+                const move = (from: number, dir: -1 | 1) => setCats((cs) => { const n = [...cs]; [n[from], n[from + dir]] = [n[from + dir], n[from]]; return n; });
+                const upd = (patch: Partial<Cat>) => setCats((cs) => cs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+                return (
+                  <Folder key={i} title={c.title || `Categorie ${i + 1}`} inline defaultOpen={false}>
+                    <div className="space-y-1.5">
+                      <div className="flex gap-1.5">
+                        <button type="button" className="btn h-7 px-2" disabled={i === 0} onClick={() => move(i, -1)} aria-label="Omhoog">↑</button>
+                        <button type="button" className="btn h-7 px-2" disabled={i === cats.length - 1} onClick={() => move(i, 1)} aria-label="Omlaag">↓</button>
+                        {!c.locked && <button type="button" className="btn btn-ghost ml-auto h-7 px-2 text-red-300" onClick={() => setCats((cs) => cs.filter((_, j) => j !== i))}>Verwijderen</button>}
+                      </div>
+                      <TextControl label="Titel" value={c.title} onChange={(v) => upd({ title: v, ...(c.locked || cats.some((x) => x !== c && x.key === c.key) || c.key === slug(c.title) ? { key: c.locked ? "" : slug(v) } : {}) })} />
+                      <TextControl label="Tekst" value={c.text} onChange={(v) => upd({ text: v })} />
+                      {c.locked ? (
+                        <p className="px-3 py-1 text-[11px] text-muted">Staat altijd aan (geen schakelaar).</p>
+                      ) : (
+                        <>
+                          <TextControl label="Key" value={c.key} onChange={(v) => upd({ key: slug(v) })} placeholder="analytics" />
+                          <TextControl label="Consent Mode" value={c.signals} onChange={(v) => upd({ signals: v })} placeholder="analytics_storage" />
+                        </>
+                      )}
+                    </div>
+                  </Folder>
+                );
+              })}
+              <div className="pt-2">
+                <ButtonGroup buttons={[{ label: "+ Nieuwe categorie", onClick: () => setCats((cs) => [...cs, { key: `categorie_${cs.length}`, title: "Nieuwe categorie", text: "", signals: "" }]) }]} />
+              </div>
             </div>
           )}
         </div>
@@ -478,6 +545,7 @@ function Step({ n, title, sub, action, children }: { n: number; title: string; s
     </section>
   );
 }
+const Cookie = () => <svg width="18" height="18" viewBox="0 0 24 24" className="text-accent" aria-hidden><path fillRule="evenodd" clipRule="evenodd" fill="currentColor" d="M2 12C2 6.47715 6.47715 2 12 2C12.3853 2 12.7659 2.02184 13.1406 2.06443L14.1463 2.17875L14.0198 3.18304C14.0068 3.28644 14 3.39219 14 3.5C14 4.76634 14.9425 5.81419 16.1638 5.97771L16.9209 6.07907L17.0223 6.83617C17.1858 8.05754 18.2337 9 19.5 9C19.8094 9 20.1035 8.94425 20.3743 8.84314L21.4192 8.45303L21.6934 9.53406C21.8938 10.3239 22 11.1503 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12ZM10 8.5C10 9.32843 9.32843 10 8.5 10C7.67157 10 7 9.32843 7 8.5C7 7.67157 7.67157 7 8.5 7C9.32843 7 10 7.67157 10 8.5ZM14 11.5C14 12.3284 13.3284 13 12.5 13C11.6716 13 11 12.3284 11 11.5C11 10.6716 11.6716 10 12.5 10C13.3284 10 14 10.6716 14 11.5ZM17 15C17.5523 15 18 14.5523 18 14C18 13.4477 17.5523 13 17 13C16.4477 13 16 13.4477 16 14C16 14.5523 16.4477 15 17 15ZM13 16.5C13 17.3284 12.3284 18 11.5 18C10.6716 18 10 17.3284 10 16.5C10 15.6716 10.6716 15 11.5 15C12.3284 15 13 15.6716 13 16.5ZM7 15C7.55228 15 8 14.5523 8 14C8 13.4477 7.55228 13 7 13C6.44772 13 6 13.4477 6 14C6 14.5523 6.44772 15 7 15Z" /></svg>;
 const Check = () => <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3 7-7" /></svg>;
 const Arrow = () => <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12L12 4M6 4h6v6" /></svg>;
 const VarIcon = () => <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" /></svg>;

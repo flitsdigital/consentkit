@@ -106,6 +106,11 @@ textarea.field { @apply h-auto py-1.5 leading-snug; }
 @media (hover: hover) and (pointer: fine) { .var-detach:hover { color: var(--color-fg); background: var(--dial-surface-hover); } }
 .dialkit-color-control[data-bound] { gap: 6px; }
 .dialkit-color-control[data-bound] .dialkit-color-label { flex: 1; min-width: 0; }
+/* Teksten-paneel: label boven, tekst links uitgelijnd (autosize rekent met de padding) */
+.texts .dialkit-text-control { padding-top: 31px; }
+.texts .dialkit-text-label { position: absolute; top: 9px; left: 12px; font-size: 11px; color: var(--dial-text-tertiary); }
+.texts .dialkit-text-input { text-align: left; width: 100%; color: var(--dial-text-primary); }
+.texts .dialkit-folder-inner { padding: 0 2px; }
 .menu-item[aria-current="true"] { background: rgba(167, 139, 250, 0.18); }
 .auto-chip { background: rgba(255, 255, 255, 0.08); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12); }
 
