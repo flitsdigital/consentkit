@@ -109,7 +109,13 @@ textarea.field { @apply h-auto py-1.5 leading-snug; }
 /* Teksten-paneel: label boven, tekst links uitgelijnd (autosize rekent met de padding) */
 .texts .dialkit-text-control { padding-top: 31px; }
 .texts .dialkit-text-label { position: absolute; top: 9px; left: 12px; font-size: 11px; color: var(--dial-text-tertiary); }
-.texts .dialkit-text-input { text-align: left; width: 100%; color: var(--dial-text-primary); }
+.texts .dialkit-text-input { text-align: left; width: 100%; color: var(--dial-text-primary); caret-color: var(--color-accent); }
+/* Focus: ring om de hele rij i.p.v. DialKit's onderlijn (die hoort bij het rij-layout) */
+.texts .dialkit-text-control { transition: box-shadow 150ms var(--ease-out-strong), background-color 150ms var(--ease-out-strong), height 180ms cubic-bezier(0.2, 0, 0, 1); }
+.texts .dialkit-text-control:focus-within { box-shadow: 0 0 0 1px oklch(1 0 0 / 0.35); background: var(--dial-surface-hover); }
+.texts .dialkit-text-control:focus-within .dialkit-text-label { color: var(--dial-text-label); }
+.texts .dialkit-text-input:focus-visible { background-image: none; }
+.texts .dialkit-text-input::selection { background: color-mix(in srgb, var(--color-accent) 40%, transparent); }
 .texts .dialkit-folder-inner { padding: 0 2px; }
 /* Eén scheidingslijn per folder (border-top); DialKit zet er anders ook een border-bottom onder */
 .texts .dialkit-folder { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
