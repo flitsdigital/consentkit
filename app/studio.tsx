@@ -17,7 +17,7 @@ export type Parts = {
   contrastStrip: ReactNode;
   versions: ReactNode;
   starters: ReactNode;
-  styleFolders: { kleuren: ReactNode; typografie: ReactNode; maten: ReactNode; effect: ReactNode };
+  styleFolders: { kleuren: ReactNode; typografie: ReactNode; layout: ReactNode; maten: ReactNode; effect: ReactNode };
   behaviourPanel: ReactNode;
   exportPanel: ReactNode;
   preview: ReactNode;
@@ -57,7 +57,7 @@ const SECTIONS: Record<Tab, Section[]> = {
     { id: "starters", label: "Starters", icon: <I.Spark />, render: (p) => p.starters },
     { id: "kleuren", label: "Kleuren", icon: <I.Palette />, render: (p) => <>{p.versions}{p.contrastStrip}<div className="dialkit-root px-3 pb-4" data-theme="dark"><Folder title="Kleuren" inline>{p.styleFolders.kleuren}</Folder></div></> },
     { id: "typografie", label: "Typografie", icon: <I.Type />, render: (p) => <>{p.versions}<div className="dialkit-root px-3 pb-4" data-theme="dark"><Folder title="Typografie" inline>{p.styleFolders.typografie}</Folder></div></> },
-    { id: "maten", label: "Maten", icon: <I.Ruler />, render: (p) => <>{p.versions}<div className="dialkit-root px-3 pb-4" data-theme="dark"><Folder title="Maten" inline>{p.styleFolders.maten}</Folder><Folder title="Effect" inline defaultOpen={false}>{p.styleFolders.effect}</Folder></div></> },
+    { id: "layout", label: "Layout", icon: <I.Ruler />, render: (p) => <>{p.versions}<div className="dialkit-root px-3 pb-4" data-theme="dark"><Folder title="Layout" inline>{p.styleFolders.layout}</Folder><Folder title="Maten" inline>{p.styleFolders.maten}</Folder><Folder title="Effect" inline defaultOpen={false}>{p.styleFolders.effect}</Folder></div></> },
   ],
   installatie: [{ id: "code", label: "Code", icon: <I.Code />, render: (p) => p.exportPanel }],
 };

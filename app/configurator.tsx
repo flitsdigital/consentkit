@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
-import { ButtonGroup, ColorControl, DialRoot, DialStore, Folder, PresetManager, Slider, TextControl, TransitionControl, useDialKitController, type DialConfig, type EasingConfig, type Preset, type ShortcutConfig } from "dialkit";
+import { ButtonGroup, ColorControl, DialRoot, DialStore, Folder, PresetManager, SelectControl, Slider, TextControl, Toggle, TransitionControl, useDialKitController, type DialConfig, type EasingConfig, type Preset, type ShortcutConfig } from "dialkit";
 import { formatRgb, parse } from "culori";
 import { Studio, type Parts } from "./studio";
 import { AUTO_VARS, COLOR_VARS, DEFAULTS, VAR_NAMES, contrast, deriveAuto, hex, keyFromUrl, mapToVars, renderCustomCss, toPx, type Extracted, type VarName, type Vars } from "@/lib/mapping";
@@ -50,15 +50,17 @@ const easeCss = (e: EasingConfig) => `cubic-bezier(${e.ease.join(", ")})`;
 const SHADOW: Record<keyof Shadow, { label: string; range: [number, number, number?]; unit: string }> = { x: { label: "Schaduw x", range: [-40, 40], unit: "px" }, y: { label: "Schaduw y", range: [-40, 60], unit: "px" }, blur: { label: "Schaduw blur", range: [0, 120], unit: "px" }, opacity: { label: "Schaduw opacity", range: [0, 1, 0.01], unit: "" } };
 const effectConfig = (vars: Vars): DialConfig => { const sh = parseShadow(vars["--cb-shadow"]); return { ...Object.fromEntries(Object.entries(SHADOW).map(([k, d]) => [k, [sh[k as keyof Shadow], ...d.range]])), easing: parseEase(vars["--cb-ease"]), replay: { type: "action", label: "Speel switch-animatie af" } }; };
 type Fx = Shadow & { easing?: EasingConfig };
-// Starters: een patch op de huidige waarden. Kleuren die niet in de patch staan (bv. accent) blijven staan.
-const STARTERS: { name: string; hint: string; patch: Partial<Vars> }[] = [
-  { name: "Licht", hint: "Wit, rustig", patch: { "--cb-color": "#1b1b1b", "--cb-color-background": "#ffffff", "--cb-border-radius": "12px", "--cb-button-radius": "8px", "--cb-padding": "24px", "--cb-shadow": "0px 12px 40px rgba(0, 0, 0, 0.18)" } },
-  { name: "Donker", hint: "Donkere kaart", patch: { "--cb-color": "#f2f2f2", "--cb-color-background": "#141414", "--cb-border-radius": "12px", "--cb-button-radius": "8px", "--cb-shadow": "0px 16px 48px rgba(0, 0, 0, 0.5)" } },
-  { name: "Zacht", hint: "Ronde hoeken, pill-knoppen", patch: { "--cb-border-radius": "24px", "--cb-button-radius": "32px", "--cb-padding": "28px", "--cb-switch-height": "28px", "--cb-switch-width": "50px", "--cb-shadow": "0px 20px 60px rgba(0, 0, 0, 0.12)" } },
-  { name: "Strak", hint: "Geen radius, harde lijnen", patch: { "--cb-border-radius": "0px", "--cb-button-radius": "0px", "--cb-padding": "24px", "--cb-shadow": "0px 2px 8px rgba(0, 0, 0, 0.1)" } },
-  { name: "Kaart", hint: "Layout: kaart onderin", patch: { "--cb-max-width": "560px", "--cb-offset": "16px" } },
-  { name: "Balk", hint: "Layout: volle breedte", patch: { "--cb-max-width": "2000px", "--cb-offset": "0px", "--cb-border-radius": "0px" } },
+// Layout-starters: welke elementen (knoppen) en welke vorm. Kleur/radius doe je daarna in de tool.
+type Align = "links" | "midden" | "rechts";
+type Layout = { hide: string[]; patch: Partial<Vars> };
+const STARTERS: { name: string; hint: string; layout: Layout }[] = [
+  { name: "Simpel", hint: "Alleen accepteren — niet AVG-conform", layout: { hide: ["settings", "save", "reject"], patch: { "--cb-max-width": "560px", "--cb-offset": "16px" } } },
+  { name: "Compleet", hint: "Instellingen, weigeren, accepteren", layout: { hide: [], patch: { "--cb-max-width": "560px", "--cb-offset": "16px" } } },
+  { name: "Kaart", hint: "Kaart onderin, huidige knoppen", layout: { hide: [], patch: { "--cb-max-width": "560px", "--cb-offset": "16px", "--cb-border-radius": "12px" } } },
+  { name: "Balk", hint: "Volle breedte onderin", layout: { hide: [], patch: { "--cb-max-width": "2000px", "--cb-offset": "0px", "--cb-border-radius": "0px" } } },
 ];
+// Uitlijning: de Webflow-class centreert met margin auto; één override in de head-code zet hem links of rechts
+const alignCss = (a: Align) => (a === "links" ? ".cb-banner { margin-left: 0; }" : a === "rechts" ? ".cb-banner { margin-right: 0; }" : "");
 // Toets vasthouden + scrollen/slepen tunet de slider zonder naar het paneel te kijken
 const NO_PRESETS: Preset[] = [];
 const SHORTCUTS: Record<string, ShortcutConfig> = { "maten.padding": { key: "p" }, "maten.offset": { key: "o" }, "maten.kaartRadius": { key: "r" }, "maten.knopRadius": { key: "k" }, "typografie.tekst": { key: "t" }, "effect.blur": { key: "b" } };
@@ -115,6 +117,8 @@ export function Configurator({ files }: { files: Files }) {
   const [key, setKey] = useState(params.get("key") ?? "");
   const [privacy, setPrivacy] = useState(params.get("privacy") ?? PRIVACY_HREF);
   const [days, setDays] = useState(Number(params.get("days")) || 180);
+  const [align, setAlign] = useState<Align>((params.get("align") as Align) || "midden");
+  const [hide, setHide] = useState<string[]>(() => params.get("hide")?.split(",").filter(Boolean) ?? []);
   const [version, setVersion] = useState(Number(params.get("v")) || 1);
   const [extracted, setExtracted] = useState<Extracted | null>(null);
   const [status, setStatus] = useState<{ loading?: boolean; error?: string }>({});
@@ -182,12 +186,14 @@ export function Configurator({ files }: { files: Files }) {
     if (key) q.set("key", key);
     if (privacy !== PRIVACY_HREF) q.set("privacy", privacy);
     if (days !== 180) q.set("days", String(days));
+    if (align !== "midden") q.set("align", align);
+    if (hide.length) q.set("hide", hide.join(","));
     if (version !== 1) q.set("v", String(version));
     VAR_NAMES.forEach((n) => vars[n] !== DEFAULTS[n] && bindings[n] !== "auto" && q.set(n.slice(2), vars[n]));
     GENERAL.forEach(([i]) => texts[i] !== originals[i] && q.set(`t${i}`, texts[i]));
     if (JSON.stringify(cats) !== JSON.stringify(defaultCats)) q.set("cats", JSON.stringify(cats));
     window.history.replaceState(null, "", q.size ? `?${q}` : location.pathname);
-  }, [url, key, privacy, days, version, vars, texts, cats, defaultCats, originals, bindings]);
+  }, [url, key, privacy, days, version, align, hide, vars, texts, cats, defaultCats, originals, bindings]);
 
   async function extract(target: string, apply: boolean) {
     setStatus({ loading: true });
@@ -230,7 +236,8 @@ export function Configurator({ files }: { files: Files }) {
     const [, ...rows] = inner.split('<div class="cb-row">');
     const close = rows[rows.length - 1].slice(rows[rows.length - 1].lastIndexOf("</div>")); // sluit-div van cb-prefs
     const body = cats.map((c) => '<div class="cb-row">' + fill(rows[c.locked ? 0 : 1], defaultCats[c.locked ? 0 : 1], c)).join("");
-    return before + '<div data-cb="prefs" class="cb-prefs">' + body + close + '<div class="cb-actions">' + after;
+    const out = before + '<div data-cb="prefs" class="cb-prefs">' + body + close + '<div class="cb-actions">' + after;
+    return hide.reduce((acc, a) => acc.replace(new RegExp(`\\s*<a[^>]*data-cb-action="${a}"[^>]*>[^<]*</a>`), ""), out);
   };
   const clipboardJson = () => {
     const src = clipboard.payload.nodes;
@@ -249,8 +256,10 @@ export function Configurator({ files }: { files: Files }) {
       return c._id;
     };
     const rowIds = cats.map((c) => clone(prefs.children![c.locked ? 0 : 1], defaultCats[c.locked ? 0 : 1], c));
-    const nodes = src.filter((n) => !oldRows.has(n._id)).map((n) => {
+    const hidden = new Set(src.filter((n) => n.data?.xattr?.some((a) => a.name === "data-cb-action" && hide.includes(a.value))).flatMap((n) => subtree(n._id)));
+    const nodes = src.filter((n) => !oldRows.has(n._id) && !hidden.has(n._id)).map((n) => {
       if (n === prefs) return { ...n, children: rowIds };
+      if (n.children?.some((c) => hidden.has(c))) n = { ...n, children: n.children.filter((c) => !hidden.has(c)) };
       if (n.text) { const i = originals.indexOf(n.v ?? ""); return { ...n, v: GENERAL.some(([g]) => g === i) ? texts[i] : n.v }; }
       const link = n.data?.link?.url === PRIVACY_HREF ? { ...n.data.link, url: privacy } : n.data?.link;
       return link ? { ...n, data: { ...n.data, link } } : n;
@@ -261,7 +270,7 @@ export function Configurator({ files }: { files: Files }) {
 
   const customCss = renderCustomCss(files.customCss, vars);
   const previewCss = renderCustomCss(files.customCss, resolved);
-  const exportCss = `<style>\n${customCss}</style>`;
+  const exportCss = `<style>\n${customCss}${alignCss(align) ? `\n/* consentkit: uitlijning */\n${alignCss(align)}\n` : ""}</style>`;
   const headCode = `<script>window.FlitsConsent = { key: '${key || "flits_consent"}', version: ${version}, days: ${days}, categories: ${categoriesJs} };</script>\n${files.headSnippet.trim()}`;
   const footerCode = `<script src="https://cdn.jsdelivr.net/gh/flitsdigital/cookie-consent@${files.version}/dist/consent.min.js" defer></script>`;
 
@@ -270,6 +279,7 @@ export function Configurator({ files }: { files: Files }) {
 html,body{margin:0;height:100%;font-family:system-ui,sans-serif;background:color-mix(in srgb, var(--cb-color) 8%, var(--cb-color-background))}
 .site{position:absolute;inset:0;width:100%;height:100%;border:0}
 .cb-banner{display:block}
+${alignCss(align)}
 ${prefsOpen ? ".cb-prefs{display:block}[data-cb-action=settings]{display:none}" : "[data-cb-action=save]{display:none}"}
 </style></head><body>${siteBg && url ? `<iframe class="site" src="${esc(url)}"></iframe>` : ""}${applyTextsHtml(files.componentHtml.split("<!-- Ergens")[0])}
 <script>
@@ -372,21 +382,25 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
       <ButtonGroup buttons={[{ label: "Speel switch-animatie af", onClick: replay }]} />
     </div>
   );
-  const applyStarter = (patch: Partial<Vars>) => {
-    dial.setValues(toDial({ ...resolved, ...patch }) as DialValues);
-    setBindings((b) => { const n = { ...b }; for (const k of Object.keys(patch)) delete n[k as VarName]; for (const a of AUTO_VARS) if (!(a in patch)) n[a] = "auto"; return n; });
+  const applyLayout = (l: Layout) => {
+    setHide(l.hide);
+    dial.setValues(toDial({ ...resolved, ...l.patch }) as DialValues);
   };
   const starters = (
     <div className="px-3 pb-4">
-      <p className="mb-3 text-[11px] leading-relaxed text-muted">Startpunt kiezen; accent en teksten blijven staan. Daarna verder tunen bij Kleuren/Maten.</p>
+      <p className="mb-3 text-[11px] leading-relaxed text-muted">Kies de opzet; kleuren, radius en teksten blijven staan en stel je in bij Kleuren en Layout.</p>
       <div className="grid grid-cols-2 gap-2">
-        {STARTERS.map((t) => { const v = { ...resolved, ...t.patch }; const r = Math.min(toPx(v["--cb-border-radius"]) ?? 12, 14) / 2; const br = Math.min(toPx(v["--cb-button-radius"]) ?? 8, 12) / 2; return (
-          <button key={t.name} type="button" onClick={() => applyStarter(t.patch)} className="starter">
-            <span className="starter-preview" style={{ background: `color-mix(in srgb, ${v["--cb-color"]} 8%, ${v["--cb-color-background"]})` }}>
-              <span className="starter-card" style={{ background: v["--cb-color-background"], borderRadius: r, width: t.name === "Balk" ? "100%" : "78%", bottom: t.name === "Balk" ? 0 : 6, ...(t.name === "Balk" ? { borderRadius: 0 } : {}) }}>
-                <i style={{ background: v["--cb-color"], width: "55%", height: 3, borderRadius: 2 }} />
-                <i style={{ background: v["--cb-color"], opacity: 0.35, width: "85%", height: 2, borderRadius: 2 }} />
-                <span className="mt-auto flex justify-end gap-1"><i style={{ background: v["--cb-color-accent"], width: 14, height: 6, borderRadius: br }} /><i style={{ background: v["--cb-color-accent"], width: 18, height: 6, borderRadius: br }} /></span>
+        {STARTERS.map((t) => { const bar = t.name === "Balk"; const btns = 3 - t.layout.hide.filter((h) => h !== "save").length; return (
+          <button key={t.name} type="button" onClick={() => applyLayout(t.layout)} className="starter">
+            <span className="starter-preview" style={{ background: `color-mix(in srgb, ${resolved["--cb-color"]} 8%, ${resolved["--cb-color-background"]})` }}>
+              <span className="starter-card" style={{ background: resolved["--cb-color-background"], borderRadius: bar ? 0 : 6, width: bar ? "100%" : "78%", bottom: bar ? 0 : 6 }}>
+                <i style={{ background: resolved["--cb-color"], width: "55%", height: 3, borderRadius: 2 }} />
+                <i style={{ background: resolved["--cb-color"], opacity: 0.35, width: "85%", height: 2, borderRadius: 2 }} />
+                <span className="mt-auto flex justify-end gap-1">
+                  {btns === 3 && <i style={{ background: resolved["--cb-color-surface"], width: 14, height: 6, borderRadius: 2 }} />}
+                  {btns >= 2 && <i style={{ background: resolved["--cb-color-accent"], width: 14, height: 6, borderRadius: 2 }} />}
+                  <i style={{ background: resolved["--cb-color-accent"], width: 18, height: 6, borderRadius: 2 }} />
+                </span>
               </span>
             </span>
             <span className="block text-[12px] font-medium">{t.name}</span>
@@ -394,6 +408,14 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
           </button>
         ); })}
       </div>
+    </div>
+  );
+  const toggleHide = (a: string, on: boolean) => setHide((h) => (on ? h.filter((x) => x !== a && (a !== "settings" || x !== "save")) : [...new Set([...h, a, ...(a === "settings" ? ["save"] : [])])]));
+  const layoutPanel = (
+    <div className="flex flex-col gap-1.5">
+      <SelectControl label="Uitlijning" value={align} options={[{ value: "links", label: "Links" }, { value: "midden", label: "Midden" }, { value: "rechts", label: "Rechts" }]} onChange={(v) => setAlign(v as Align)} />
+      <Toggle label="Knop: instellingen" checked={!hide.includes("settings")} onChange={(on) => toggleHide("settings", on)} />
+      <Toggle label="Knop: weigeren" checked={!hide.includes("reject")} onChange={(on) => toggleHide("reject", on)} />
     </div>
   );
   const versions = (
@@ -539,6 +561,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
   const styleFolders = {
     kleuren: <div className="flex flex-col gap-1.5">{paths("kleuren").map(colorRow)}</div>,
     typografie: <div className="flex flex-col gap-1.5">{paths("typografie").map(slider)}</div>,
+    layout: layoutPanel,
     maten: <div className="flex flex-col gap-1.5">{paths("maten").map(slider)}</div>,
     effect: effectPanel,
   };
