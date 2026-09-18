@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ButtonGroup, ColorControl, Folder, Slider, TextControl, useDialKitController, type DialConfig } from "dialkit";
 import { parse } from "culori";
+import { FocusLayout, InspectorLayout, PrototypeSwitcher, StudioLayout, type Parts } from "./prototype-layouts";
 import { AUTO_VARS, COLOR_VARS, DEFAULTS, VAR_NAMES, contrast, deriveAuto, hex, keyFromUrl, mapToVars, renderCustomCss, toPx, type Extracted, type VarName, type Vars } from "@/lib/mapping";
 
 type Files = { customCss: string; classesCss: string; componentHtml: string; clipboardJson: string; headSnippet: string; version: string };
@@ -88,13 +89,13 @@ export function Configurator({ files }: { files: Files }) {
   const [cats, setCats] = useState<Cat[]>(() => { try { return JSON.parse(params.get("cats") ?? "") as Cat[]; } catch { return defaultCats; } });
   const [key, setKey] = useState(params.get("key") ?? "");
   const [privacy, setPrivacy] = useState(params.get("privacy") ?? PRIVACY_HREF);
+  const [days, setDays] = useState(Number(params.get("days")) || 180);
+  const [version, setVersion] = useState(Number(params.get("v")) || 1);
   const [extracted, setExtracted] = useState<Extracted | null>(null);
   const [status, setStatus] = useState<{ loading?: boolean; error?: string }>({});
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [mobile, setMobile] = useState(false);
   const [siteBg, setSiteBg] = useState(false);
-  const [leftTab, setLeftTab] = useState<"gevonden" | "teksten">("gevonden");
-  const [rightTab, setRightTab] = useState<"stijl" | "export">("stijl");
   const [copied, setCopied] = useState("");
   // Categorie slepen met pointer events (geen HTML5-DnD: werkt ook op touch en is te testen)
   const [drag, setDrag] = useState<{ from: number | null; over: number | null }>({ from: null, over: null });
@@ -147,14 +148,18 @@ export function Configurator({ files }: { files: Files }) {
   // Deelbare state: alles wat afwijkt van de default in de querystring
   useEffect(() => {
     const q = new URLSearchParams();
+    const variant = new URLSearchParams(location.search).get("variant"); // prototype-switch bewaren
+    if (variant) q.set("variant", variant);
     if (url) q.set("url", url);
     if (key) q.set("key", key);
     if (privacy !== PRIVACY_HREF) q.set("privacy", privacy);
+    if (days !== 180) q.set("days", String(days));
+    if (version !== 1) q.set("v", String(version));
     VAR_NAMES.forEach((n) => vars[n] !== DEFAULTS[n] && bindings[n] !== "auto" && q.set(n.slice(2), vars[n]));
     GENERAL.forEach(([i]) => texts[i] !== originals[i] && q.set(`t${i}`, texts[i]));
     if (JSON.stringify(cats) !== JSON.stringify(defaultCats)) q.set("cats", JSON.stringify(cats));
     window.history.replaceState(null, "", q.size ? `?${q}` : location.pathname);
-  }, [url, key, privacy, vars, texts, cats, defaultCats, originals, bindings]);
+  }, [url, key, privacy, days, version, vars, texts, cats, defaultCats, originals, bindings]);
 
   async function extract(target: string, apply: boolean) {
     setStatus({ loading: true });
@@ -229,7 +234,7 @@ export function Configurator({ files }: { files: Files }) {
   const customCss = renderCustomCss(files.customCss, vars);
   const previewCss = renderCustomCss(files.customCss, resolved);
   const exportCss = `<style>\n${customCss}</style>`;
-  const headCode = `<script>window.FlitsConsent = { key: '${key || "flits_consent"}', version: 1, days: 180, categories: ${categoriesJs} };</script>\n${files.headSnippet.trim()}`;
+  const headCode = `<script>window.FlitsConsent = { key: '${key || "flits_consent"}', version: ${version}, days: ${days}, categories: ${categoriesJs} };</script>\n${files.headSnippet.trim()}`;
   const footerCode = `<script src="https://cdn.jsdelivr.net/gh/flitsdigital/cookie-consent@${files.version}/dist/consent.min.js" defer></script>`;
 
   const srcdoc = `<!doctype html><html><head><meta name="viewport" content="width=device-width"><style>${previewCss}</style><style>${files.classesCss}</style><style>
@@ -299,7 +304,7 @@ document.addEventListener("click", function (e) {
         )}
         {!bound && <button type="button" popoverTarget={id} className="var-btn" title="Variabele van de site" aria-label="Variabele kiezen" disabled={!siteVars.length}><VarIcon /></button>}
         <div id={id} popover="auto" className="menu w-64" style={{ positionArea: "bottom span-left" }}>
-          <input type="search" value={varQuery} onChange={(e) => setVarQuery(e.target.value)} placeholder="Zoek variabele…" className="field mb-1 h-7 text-xs" autoFocus />
+          <input type="search" value={varQuery} onChange={(e) => setVarQuery(e.target.value)} placeholder="Zoek variabele…" className="field mb-1 h-7 text-xs" />
           <div className="max-h-64 overflow-y-auto">
             {(AUTO_VARS as readonly string[]).includes(d.v) && !q && (
               <button type="button" className="menu-item" popoverTarget={id} popoverTargetAction="hide" onClick={() => bind(d.v, "auto", auto[d.v as (typeof AUTO_VARS)[number]])} aria-current={bound === "auto"}>
@@ -335,208 +340,195 @@ document.addEventListener("click", function (e) {
 
   const domain = (() => { try { return new URL(url).hostname; } catch { return "Nieuwe banner"; } })();
 
-  return (
-    <div className="grid h-full grid-cols-[264px_1fr_336px] grid-rows-[48px_44px_1fr]">
-      {/* Topbar */}
-      <header className="col-span-3 flex items-center border-b border-line px-4">
-        <div className="flex w-60 items-center gap-2 text-[13px] font-semibold tracking-tight"><Cookie /> consentkit</div>
-        <div className="flex-1 truncate text-center text-[13px] text-muted">{domain}</div>
-        <div className="flex w-60 items-center justify-end gap-2">
-          <button type="button" className="btn btn-ghost" onClick={() => copy("link", location.href)}>{copied === "link" ? <><Check /> Link gekopieerd</> : "Deel link"}</button>
-          <button type="button" className="btn btn-primary ps-3 pe-2.5" onClick={() => setRightTab("export")}>Exporteren <Arrow /></button>
-        </div>
-      </header>
-
-      {/* Toolbar */}
-      <div className="col-span-3 flex items-center gap-3 border-b border-line px-4">
-        <form className="flex w-[420px] items-center gap-2" onSubmit={(e) => { e.preventDefault(); extract(url, true); }}>
-          <input type="url" required value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://klant.webflow.io/" className="field font-mono text-xs" />
-          <button type="submit" disabled={status.loading} className="btn">{status.loading ? <><Spinner /> Bezig</> : "Stijl ophalen"}</button>
-        </form>
-        {status.error && <p role="alert" className="truncate text-xs text-red-400">{status.error}</p>}
-        <div className="ml-auto flex items-center gap-2">
-          <div className="seg" role="group" aria-label="Banner-staat">
-            <button type="button" aria-pressed={!prefsOpen} onClick={() => setPrefsOpen(false)}>Gesloten</button>
-            <button type="button" aria-pressed={prefsOpen} onClick={() => setPrefsOpen(true)}>Instellingen</button>
-          </div>
-          <div className="seg" role="group" aria-label="Formaat">
-            <button type="button" aria-pressed={!mobile} onClick={() => setMobile(false)}>Desktop</button>
-            <button type="button" aria-pressed={mobile} onClick={() => setMobile(true)}>Mobiel</button>
-          </div>
-          <button type="button" className="btn" aria-pressed={siteBg} disabled={!url} onClick={() => setSiteBg((s) => !s)} style={siteBg ? { boxShadow: "0 0 0 1px oklch(1 0 0 / 0.35)" } : undefined}>Site als achtergrond</button>
-        </div>
+  // ---- Onderdelen; de layout-varianten (prototype) zetten ze anders neer ----
+  const urlForm = (
+    <form className="flex w-full items-center gap-2" onSubmit={(e) => { e.preventDefault(); extract(url, true); }}>
+      <input type="url" required value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://klant.webflow.io/" className="field font-mono text-xs" />
+      <button type="submit" disabled={status.loading} className="btn">{status.loading ? <><Spinner /> Bezig</> : "Stijl ophalen"}</button>
+    </form>
+  );
+  const errorLine = status.error && <p role="alert" className="truncate text-xs text-red-400">{status.error}</p>;
+  const previewControls = (
+    <>
+      <div className="seg" role="group" aria-label="Banner-staat">
+        <button type="button" aria-pressed={!prefsOpen} onClick={() => setPrefsOpen(false)}>Gesloten</button>
+        <button type="button" aria-pressed={prefsOpen} onClick={() => setPrefsOpen(true)}>Instellingen</button>
       </div>
-
-      {/* Links: gevonden waarden / teksten */}
-      <aside className="flex min-h-0 flex-col border-r border-line bg-panel">
-        <div className="px-3 pt-3 pb-2">
-          <div className="seg">
-            <button type="button" aria-pressed={leftTab === "gevonden"} onClick={() => setLeftTab("gevonden")}>Gevonden</button>
-            <button type="button" aria-pressed={leftTab === "teksten"} onClick={() => setLeftTab("teksten")}>Teksten</button>
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
-          {leftTab === "gevonden" && (!extracted ? (
-            <p className="px-1 pt-6 text-center text-xs leading-relaxed text-muted">Plak een URL en klik <em>Stijl ophalen</em>. Kleuren, radii en font-sizes van de site verschijnen hier.</p>
-          ) : (
-            <div className="space-y-5">
-              <Section title="Kleuren" hint={`${extracted.colors.length}`}>
-                <div className="grid grid-cols-6 gap-1.5">
-                  {extracted.colors.slice(0, 36).map((c, i) => (
-                    <span key={c.value} className="relative">
-                      <button type="button" popoverTarget={`c${i}`} title={`${c.value} · ${c.count}×`} className="swatch block aspect-square w-full rounded-md transition-transform duration-150 ease-out-strong active:scale-[0.97]" style={{ background: c.value }} aria-label={`${c.value}, ${c.count} keer`} />
-                      {menuFor(`c${i}`, COLOR_TARGETS, c.value)}
-                    </span>
-                  ))}
-                </div>
-              </Section>
-              {siteVars.length > 0 && (
-                <Section title="Variabelen" hint={`${siteVars.length}`}>
-                  <div className="space-y-0.5">
-                    {siteVars.slice(0, 40).map((v, i) => (
-                      <span key={v.name} className="relative block">
-                        <button type="button" popoverTarget={`v${i}`} title={v.name} className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors duration-150 hover:bg-raised">
-                          <span className="swatch size-4 shrink-0 rounded" style={{ background: v.value }} />
-                          <span className="truncate font-mono text-[11px] text-fg/80">{shortName(v.name)}</span>
-                          <span className="ml-auto shrink-0 font-mono text-[10px] text-muted">{hex(v.value)}</span>
-                        </button>
-                        {menuFor(`v${i}`, COLOR_TARGETS, v.value, v.name)}
-                      </span>
-                    ))}
-                  </div>
-                </Section>
-              )}
-              <Section title="Radius">
-                <div className="flex flex-wrap gap-1.5">
-                  {extracted.radii.filter((r) => toPx(r.value)).map((r, i) => (
-                    <span key={r.value} className="relative">
-                      <button type="button" popoverTarget={`r${i}`} className="btn h-7 gap-1.5 px-2 font-mono text-[11px]"><span className="inline-block size-3 border-t border-l border-fg/60" style={{ borderTopLeftRadius: Math.min(toPx(r.value)!, 12) }} />{toPx(r.value)}px <span className="text-muted">{r.count}×</span></button>
-                      {menuFor(`r${i}`, RADIUS_TARGETS, toPx(r.value)!)}
-                    </span>
-                  ))}
-                </div>
-              </Section>
-              <Section title="Font-size">
-                <div className="flex flex-wrap gap-1.5">
-                  {Object.entries(extracted.fontSizes).filter(([, v]) => v && toPx(v)).map(([tag, v], i) => (
-                    <span key={tag} className="relative">
-                      <button type="button" popoverTarget={`f${i}`} className="btn h-7 px-2 font-mono text-[11px]"><span className="text-muted">{tag}</span> {toPx(v!)}px</button>
-                      {menuFor(`f${i}`, FONT_TARGETS, toPx(v!)!)}
-                    </span>
-                  ))}
-                </div>
-              </Section>
-            </div>
+      <div className="seg" role="group" aria-label="Formaat">
+        <button type="button" aria-pressed={!mobile} onClick={() => setMobile(false)}>Desktop</button>
+        <button type="button" aria-pressed={mobile} onClick={() => setMobile(true)}>Mobiel</button>
+      </div>
+      <button type="button" className="btn" aria-pressed={siteBg} disabled={!url} onClick={() => setSiteBg((s) => !s)} style={siteBg ? { boxShadow: "0 0 0 1px oklch(1 0 0 / 0.35)" } : undefined}>Site als achtergrond</button>
+    </>
+  );
+  const shareBtn = <button type="button" className="btn btn-ghost" onClick={() => copy("link", location.href)}>{copied === "link" ? <><Check /> Link gekopieerd</> : "Deel link"}</button>;
+  const foundPanel = !extracted ? (
+    <p className="px-1 pt-6 text-center text-xs leading-relaxed text-muted">Plak een URL en klik <em>Stijl ophalen</em>. Kleuren, radii en font-sizes van de site verschijnen hier.</p>
+  ) : (
+    <div className="space-y-5">
+      <Section title="Kleuren" hint={`${extracted.colors.length}`}>
+        <div className="grid grid-cols-6 gap-1.5">
+          {extracted.colors.slice(0, 36).map((c, i) => (
+            <span key={c.value} className="relative">
+              <button type="button" popoverTarget={`c${i}`} title={`${c.value} · ${c.count}×`} className="swatch block aspect-square w-full rounded-md transition-transform duration-150 ease-out-strong active:scale-[0.97]" style={{ background: c.value }} aria-label={`${c.value}, ${c.count} keer`} />
+              {menuFor(`c${i}`, COLOR_TARGETS, c.value)}
+            </span>
           ))}
-          {leftTab === "teksten" && (
-            <div className="dialkit-root texts px-1 pb-4" data-theme="dark">
-              <Folder title="Algemeen" inline>
-                <div className="flex flex-col gap-1.5">
-                  {GENERAL.map(([i, lbl]) => (
-                    <Fragment key={i}>
-                      <TextControl label={lbl} value={texts[i]} onChange={(v) => setTexts((s) => s.map((x, j) => (j === i ? v : x)))} />
-                      {i === 2 && <TextControl label="Privacy-URL" value={privacy} onChange={setPrivacy} placeholder="/privacybeleid" />}
-                    </Fragment>
-                  ))}
-                </div>
-              </Folder>
-              {cats.map((c, i) => {
-                const upd = (patch: Partial<Cat>) => setCats((cs) => cs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
-                return (
-                  <div
-                    key={i}
-                    className="drag-row"
-                    data-over={drag.over === i && drag.from !== i ? (drag.from! < i ? "after" : "before") : undefined}
-                    data-dragging={drag.from === i || undefined}
-                  >
-                    <button type="button" className="drag-handle" aria-label="Versleep categorie" title="Versleep" onPointerDown={startDrag(i)}><Grip /></button>
-                    <Folder title={c.title || `Categorie ${i + 1}`} inline defaultOpen={false}>
-                      <div className="flex flex-col gap-1.5">
-                        <TextControl label="Titel" value={c.title} onChange={(v) => upd({ title: v, ...(c.locked || cats.some((x) => x !== c && x.key === c.key) || c.key === slug(c.title) ? { key: c.locked ? "" : slug(v) } : {}) })} />
-                        <TextControl label="Tekst" value={c.text} onChange={(v) => upd({ text: v })} />
-                        {c.locked ? (
-                          <p className="px-3 py-1 text-[11px] text-muted">Staat altijd aan (geen schakelaar).</p>
-                        ) : (
-                          <>
-                            <TextControl label="Key" value={c.key} onChange={(v) => upd({ key: slug(v) })} placeholder="analytics" />
-                            <TextControl label="Consent Mode" value={c.signals} onChange={(v) => upd({ signals: v })} placeholder="analytics_storage" />
-                            <ButtonGroup buttons={[{ label: "Categorie verwijderen", onClick: () => setCats((cs) => cs.filter((_, j) => j !== i)) }]} />
-                          </>
-                        )}
-                      </div>
-                    </Folder>
-                  </div>
-                );
-              })}
-              <div className="pt-2">
-                <ButtonGroup buttons={[{ label: "+ Nieuwe categorie", onClick: () => setCats((cs) => [...cs, { key: `categorie_${Date.now() % 10000}`, title: "Nieuwe categorie", text: "", signals: "" }]) }]} />
-              </div>
-            </div>
-          )}
         </div>
-      </aside>
-
-      {/* Canvas */}
-      <main className="canvas relative flex min-h-0 items-center justify-center overflow-auto p-8">
-        <div className="relative">
-          <iframe
-            title="Preview"
-            srcDoc={srcdoc}
-            data-testid="preview"
-            className="block rounded-xl bg-white shadow-[0_0_0_1px_oklch(1_0_0_/_0.1),0_24px_64px_oklch(0_0_0_/_0.5)] transition-[width,height] duration-200 ease-out-strong"
-            style={{ width: mobile ? 390 : "min(1024px, calc(100vw - 264px - 336px - 64px))", height: mobile ? 720 : 640 }}
-          />
-        </div>
-      </main>
-
-      {/* Rechts: DialKit / export */}
-      <aside className="flex min-h-0 flex-col border-l border-line bg-panel">
-        <div className="px-3 pt-3 pb-2">
-          <div className="seg w-full *:flex-1">
-            <button type="button" aria-pressed={rightTab === "stijl"} onClick={() => setRightTab("stijl")}>Stijl</button>
-            <button type="button" aria-pressed={rightTab === "export"} onClick={() => setRightTab("export")}>Exporteren</button>
+      </Section>
+      {siteVars.length > 0 && (
+        <Section title="Variabelen" hint={`${siteVars.length}`}>
+          <div className="space-y-0.5">
+            {siteVars.slice(0, 40).map((v, i) => (
+              <span key={v.name} className="relative block">
+                <button type="button" popoverTarget={`v${i}`} title={v.name} className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors duration-150 hover:bg-raised">
+                  <span className="swatch size-4 shrink-0 rounded" style={{ background: v.value }} />
+                  <span className="truncate font-mono text-[11px] text-fg/80">{shortName(v.name)}</span>
+                  <span className="ml-auto shrink-0 font-mono text-[10px] text-muted">{hex(v.value)}</span>
+                </button>
+                {menuFor(`v${i}`, COLOR_TARGETS, v.value, v.name)}
+              </span>
+            ))}
           </div>
+        </Section>
+      )}
+      <Section title="Radius">
+        <div className="flex flex-wrap gap-1.5">
+          {extracted.radii.filter((r) => toPx(r.value)).map((r, i) => (
+            <span key={r.value} className="relative">
+              <button type="button" popoverTarget={`r${i}`} className="btn h-7 gap-1.5 px-2 font-mono text-[11px]"><span className="inline-block size-3 border-t border-l border-fg/60" style={{ borderTopLeftRadius: Math.min(toPx(r.value)!, 12) }} />{toPx(r.value)}px <span className="text-muted">{r.count}×</span></button>
+              {menuFor(`r${i}`, RADIUS_TARGETS, toPx(r.value)!)}
+            </span>
+          ))}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className={rightTab === "stijl" ? "" : "hidden"}>
-            <div className="grid grid-cols-3 gap-1.5 px-3 pb-2">
-              {CONTRAST_PAIRS.map(([a, b, name]) => {
-                const r = contrast(resolved[a], resolved[b]) ?? 0;
-                const ok = r >= 4.5;
-                return (
-                  <div key={name} className="rounded-lg p-2" style={{ boxShadow: "var(--shadow-ring)" }} title={`${a} op ${b}`}>
-                    <div className="flex items-center justify-between">
-                      <span className="swatch flex h-5 w-7 items-center justify-center rounded text-[10px] font-bold" style={{ background: resolved[b], color: resolved[a] }}>Aa</span>
-                      <span className={`rounded px-1 py-px text-[10px] font-semibold ${ok ? "bg-emerald-400/15 text-emerald-300" : "bg-red-400/15 text-red-300"}`}>{ok ? "AA" : "✕"}</span>
-                    </div>
-                    <div className="mt-1.5 flex items-baseline justify-between text-[11px]"><span className="text-muted">{name}</span><span className="font-mono">{r.toFixed(1)}</span></div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="dialkit-root px-3 pb-4" data-theme="dark">
-              <Folder title="Kleuren" inline><div className="flex flex-col gap-1.5">{paths("kleuren").map(colorRow)}</div></Folder>
-              <Folder title="Typografie" inline><div className="flex flex-col gap-1.5">{paths("typografie").map(slider)}</div></Folder>
-              <Folder title="Maten" inline><div className="flex flex-col gap-1.5">{paths("maten").map(slider)}</div></Folder>
-              <Folder title="Effect" inline defaultOpen={false}><div className="flex flex-col gap-1.5">{paths("effect").map(text)}</div></Folder>
-            </div>
-          </div>
-          {rightTab === "export" && (
-            <div className="space-y-4 px-3 pb-4">
-              <Step n={1} title="custom.css" sub="Site settings → Custom code → Head" action={copyBtn("css", exportCss)}><pre className="code max-h-44">{exportCss}</pre></Step>
-              <Step n={2} title="Head-code" sub="Boven GTM" action={copyBtn("head", headCode)}>
-                <label className="mb-2 flex items-center gap-2 text-[11px] text-muted">key <input type="text" value={key} onChange={(e) => setKey(e.target.value)} placeholder="klant_consent" className="field h-7 font-mono text-[11px]" /></label>
-                <pre className="code max-h-32">{headCode}</pre>
-              </Step>
-              <Step n={3} title="Footer-code" sub={`v${files.version}`} action={copyBtn("footer", footerCode)}><pre className="code">{footerCode}</pre></Step>
-              <Step n={4} title="Component" sub="Plak met ⌘V in de Webflow Designer">
-                <button type="button" onClick={copyToWebflow} className="btn btn-primary h-9 w-full">{copied === "webflow" ? <><Check /> Gekopieerd – plak in de Designer</> : "Copy to Webflow"}</button>
-              </Step>
-            </div>
-          )}
+      </Section>
+      <Section title="Font-size">
+        <div className="flex flex-wrap gap-1.5">
+          {Object.entries(extracted.fontSizes).filter(([, v]) => v && toPx(v)).map(([tag, v], i) => (
+            <span key={tag} className="relative">
+              <button type="button" popoverTarget={`f${i}`} className="btn h-7 px-2 font-mono text-[11px]"><span className="text-muted">{tag}</span> {toPx(v!)}px</button>
+              {menuFor(`f${i}`, FONT_TARGETS, toPx(v!)!)}
+            </span>
+          ))}
         </div>
-      </aside>
+      </Section>
     </div>
+  );
+  const generalTexts = (
+    <div className="flex flex-col gap-1.5">
+      {GENERAL.map(([i, lbl]) => (
+        <Fragment key={i}>
+          <TextControl label={lbl} value={texts[i]} onChange={(v) => setTexts((s) => s.map((x, j) => (j === i ? v : x)))} />
+          {i === 2 && <TextControl label="Privacy-URL" value={privacy} onChange={setPrivacy} placeholder="/privacybeleid" />}
+        </Fragment>
+      ))}
+    </div>
+  );
+  const categoryList = (
+    <>
+      {cats.map((c, i) => {
+        const upd = (patch: Partial<Cat>) => setCats((cs) => cs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+        return (
+          <div key={i} className="drag-row" data-over={drag.over === i && drag.from !== i ? (drag.from! < i ? "after" : "before") : undefined} data-dragging={drag.from === i || undefined}>
+            <button type="button" className="drag-handle" aria-label="Versleep categorie" title="Versleep" onPointerDown={startDrag(i)}><Grip /></button>
+            <Folder title={c.title || `Categorie ${i + 1}`} inline defaultOpen={false}>
+              <div className="flex flex-col gap-1.5">
+                <TextControl label="Titel" value={c.title} onChange={(v) => upd({ title: v, ...(c.locked || cats.some((x) => x !== c && x.key === c.key) || c.key === slug(c.title) ? { key: c.locked ? "" : slug(v) } : {}) })} />
+                <TextControl label="Tekst" value={c.text} onChange={(v) => upd({ text: v })} />
+                {c.locked ? (
+                  <p className="px-3 py-1 text-[11px] text-muted">Staat altijd aan (geen schakelaar).</p>
+                ) : (
+                  <>
+                    <TextControl label="Key" value={c.key} onChange={(v) => upd({ key: slug(v) })} placeholder="analytics" />
+                    <TextControl label="Consent Mode" value={c.signals} onChange={(v) => upd({ signals: v })} placeholder="analytics_storage" />
+                    <ButtonGroup buttons={[{ label: "Categorie verwijderen", onClick: () => setCats((cs) => cs.filter((_, j) => j !== i)) }]} />
+                  </>
+                )}
+              </div>
+            </Folder>
+          </div>
+        );
+      })}
+      <div className="pt-2">
+        <ButtonGroup buttons={[{ label: "+ Nieuwe categorie", onClick: () => setCats((cs) => [...cs, { key: `categorie_${Date.now() % 10000}`, title: "Nieuwe categorie", text: "", signals: "" }]) }]} />
+      </div>
+    </>
+  );
+  const textsPanel = (
+    <div className="dialkit-root texts px-1 pb-4" data-theme="dark">
+      <Folder title="Algemeen" inline>{generalTexts}</Folder>
+      {categoryList}
+    </div>
+  );
+  const contrastStrip = (
+    <div className="grid grid-cols-3 gap-1.5 px-3 pb-2">
+      {CONTRAST_PAIRS.map(([a, b, name]) => {
+        const r = contrast(resolved[a], resolved[b]) ?? 0;
+        const ok = r >= 4.5;
+        return (
+          <div key={name} className="rounded-lg p-2" style={{ boxShadow: "var(--shadow-ring)" }} title={`${a} op ${b}`}>
+            <div className="flex items-center justify-between">
+              <span className="swatch flex h-5 w-7 items-center justify-center rounded text-[10px] font-bold" style={{ background: resolved[b], color: resolved[a] }}>Aa</span>
+              <span className={`rounded px-1 py-px text-[10px] font-semibold ${ok ? "bg-emerald-400/15 text-emerald-300" : "bg-red-400/15 text-red-300"}`}>{ok ? "AA" : "✕"}</span>
+            </div>
+            <div className="mt-1.5 flex items-baseline justify-between text-[11px]"><span className="text-muted">{name}</span><span className="font-mono">{r.toFixed(1)}</span></div>
+          </div>
+        );
+      })}
+    </div>
+  );
+  const styleFolders = {
+    kleuren: <div className="flex flex-col gap-1.5">{paths("kleuren").map(colorRow)}</div>,
+    typografie: <div className="flex flex-col gap-1.5">{paths("typografie").map(slider)}</div>,
+    maten: <div className="flex flex-col gap-1.5">{paths("maten").map(slider)}</div>,
+    effect: <div className="flex flex-col gap-1.5">{paths("effect").map(text)}</div>,
+  };
+  const stylePanel = (
+    <div className="dialkit-root px-3 pb-4" data-theme="dark">
+      <Folder title="Kleuren" inline>{styleFolders.kleuren}</Folder>
+      <Folder title="Typografie" inline>{styleFolders.typografie}</Folder>
+      <Folder title="Maten" inline>{styleFolders.maten}</Folder>
+      <Folder title="Effect" inline defaultOpen={false}>{styleFolders.effect}</Folder>
+    </div>
+  );
+  const behaviourPanel = (
+    <div className="dialkit-root texts px-1 pb-4" data-theme="dark">
+      <div className="flex flex-col gap-1.5">
+        <TextControl label="Opslag-key (localStorage / cookie)" value={key} onChange={setKey} placeholder="klant_consent" />
+        <TextControl label="Geldigheid (dagen)" value={String(days)} onChange={(v) => setDays(Number(v) || 180)} />
+        <TextControl label="Versie (verhoog = opnieuw vragen)" value={String(version)} onChange={(v) => setVersion(Number(v) || 1)} />
+      </div>
+      <p className="px-3 pt-3 text-[11px] leading-relaxed text-muted">Consent Mode v2-signalen per categorie stel je in bij <em>Banner → Categorieën</em>.</p>
+    </div>
+  );
+  const exportPanel = (
+    <div className="space-y-4 px-3 pb-4">
+      <Step n={1} title="custom.css" sub="Site settings → Custom code → Head" action={copyBtn("css", exportCss)}><pre className="code max-h-44">{exportCss}</pre></Step>
+      <Step n={2} title="Head-code" sub="Boven GTM" action={copyBtn("head", headCode)}><pre className="code max-h-32">{headCode}</pre></Step>
+      <Step n={3} title="Footer-code" sub={`v${files.version}`} action={copyBtn("footer", footerCode)}><pre className="code">{footerCode}</pre></Step>
+      <Step n={4} title="Component" sub="Plak met ⌘V in de Webflow Designer">
+        <button type="button" onClick={copyToWebflow} className="btn btn-primary h-9 w-full">{copied === "webflow" ? <><Check /> Gekopieerd – plak in de Designer</> : "Copy to Webflow"}</button>
+      </Step>
+    </div>
+  );
+  const preview = (
+    <iframe
+      title="Preview"
+      srcDoc={srcdoc}
+      data-testid="preview"
+      className="block rounded-xl bg-white shadow-[0_0_0_1px_oklch(1_0_0_/_0.1),0_24px_64px_oklch(0_0_0_/_0.5)] transition-[width,height] duration-200 ease-out-strong"
+      style={{ width: mobile ? 390 : "min(1024px, 100%)", height: mobile ? 720 : 640, maxWidth: "100%" }}
+    />
+  );
+
+  const parts: Parts = { domain, urlForm, errorLine, previewControls, shareBtn, foundPanel, generalTexts, categoryList, textsPanel, contrastStrip, styleFolders, stylePanel, behaviourPanel, exportPanel, preview, version: files.version, hasSite: !!extracted };
+  const variant = params.get("variant") ?? "A";
+  const Layout = { A: StudioLayout, B: InspectorLayout, C: FocusLayout }[variant] ?? StudioLayout;
+  return (
+    <>
+      <Layout {...parts} />
+      <PrototypeSwitcher current={variant} />
+    </>
   );
 }
 
@@ -560,10 +552,8 @@ function Step({ n, title, sub, action, children }: { n: number; title: string; s
     </section>
   );
 }
-const Cookie = () => <svg width="18" height="18" viewBox="0 0 24 24" className="text-accent" aria-hidden><path fillRule="evenodd" clipRule="evenodd" fill="currentColor" d="M2 12C2 6.47715 6.47715 2 12 2C12.3853 2 12.7659 2.02184 13.1406 2.06443L14.1463 2.17875L14.0198 3.18304C14.0068 3.28644 14 3.39219 14 3.5C14 4.76634 14.9425 5.81419 16.1638 5.97771L16.9209 6.07907L17.0223 6.83617C17.1858 8.05754 18.2337 9 19.5 9C19.8094 9 20.1035 8.94425 20.3743 8.84314L21.4192 8.45303L21.6934 9.53406C21.8938 10.3239 22 11.1503 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12ZM10 8.5C10 9.32843 9.32843 10 8.5 10C7.67157 10 7 9.32843 7 8.5C7 7.67157 7.67157 7 8.5 7C9.32843 7 10 7.67157 10 8.5ZM14 11.5C14 12.3284 13.3284 13 12.5 13C11.6716 13 11 12.3284 11 11.5C11 10.6716 11.6716 10 12.5 10C13.3284 10 14 10.6716 14 11.5ZM17 15C17.5523 15 18 14.5523 18 14C18 13.4477 17.5523 13 17 13C16.4477 13 16 13.4477 16 14C16 14.5523 16.4477 15 17 15ZM13 16.5C13 17.3284 12.3284 18 11.5 18C10.6716 18 10 17.3284 10 16.5C10 15.6716 10.6716 15 11.5 15C12.3284 15 13 15.6716 13 16.5ZM7 15C7.55228 15 8 14.5523 8 14C8 13.4477 7.55228 13 7 13C6.44772 13 6 13.4477 6 14C6 14.5523 6.44772 15 7 15Z" /></svg>;
 const Grip = () => <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" aria-hidden><circle cx="2.5" cy="2" r="1.3" /><circle cx="7.5" cy="2" r="1.3" /><circle cx="2.5" cy="7" r="1.3" /><circle cx="7.5" cy="7" r="1.3" /><circle cx="2.5" cy="12" r="1.3" /><circle cx="7.5" cy="12" r="1.3" /></svg>;
 const Check = () => <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3 7-7" /></svg>;
-const Arrow = () => <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12L12 4M6 4h6v6" /></svg>;
 const VarIcon = () => <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" /></svg>;
 const Unlink = () => <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 9.5l3-3M9 4l1-1a2.5 2.5 0 0 1 3.5 3.5l-1 1M7 12l-1 1a2.5 2.5 0 0 1-3.5-3.5l1-1M3 3l10 10" /></svg>;
 const Spinner = () => <svg className="animate-spin" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M8 2a6 6 0 1 1-6 6" /></svg>;
