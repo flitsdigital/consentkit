@@ -18,6 +18,7 @@ export type Parts = {
   categoryList: ReactNode;
   textsPanel: ReactNode;
   contrastStrip: ReactNode;
+  versions: ReactNode;
   styleFolders: { kleuren: ReactNode; typografie: ReactNode; maten: ReactNode; effect: ReactNode };
   stylePanel: ReactNode;
   behaviourPanel: ReactNode;
@@ -55,9 +56,9 @@ const SECTIONS: Record<Tab, Section[]> = {
   gedrag: [{ id: "opslag", label: "Opslag", icon: <I.Sliders />, render: (p) => p.behaviourPanel }],
   stijl: [
     { id: "site", label: "Site", icon: <I.Globe />, render: (p) => <div className="space-y-3 px-3 pb-4"><div>{p.urlForm}</div>{p.errorLine}{p.foundPanel}</div> },
-    { id: "kleuren", label: "Kleuren", icon: <I.Palette />, render: (p) => <>{p.contrastStrip}<div className="dialkit-root px-3 pb-4" data-theme="dark"><Folder title="Kleuren" inline>{p.styleFolders.kleuren}</Folder></div></> },
-    { id: "typografie", label: "Typografie", icon: <I.Type />, render: (p) => <div className="dialkit-root px-3 pb-4" data-theme="dark"><Folder title="Typografie" inline>{p.styleFolders.typografie}</Folder></div> },
-    { id: "maten", label: "Maten", icon: <I.Ruler />, render: (p) => <div className="dialkit-root px-3 pb-4" data-theme="dark"><Folder title="Maten" inline>{p.styleFolders.maten}</Folder><Folder title="Effect" inline defaultOpen={false}>{p.styleFolders.effect}</Folder></div> },
+    { id: "kleuren", label: "Kleuren", icon: <I.Palette />, render: (p) => <>{p.versions}{p.contrastStrip}<div className="dialkit-root px-3 pb-4" data-theme="dark"><Folder title="Kleuren" inline>{p.styleFolders.kleuren}</Folder></div></> },
+    { id: "typografie", label: "Typografie", icon: <I.Type />, render: (p) => <>{p.versions}<div className="dialkit-root px-3 pb-4" data-theme="dark"><Folder title="Typografie" inline>{p.styleFolders.typografie}</Folder></div></> },
+    { id: "maten", label: "Maten", icon: <I.Ruler />, render: (p) => <>{p.versions}<div className="dialkit-root px-3 pb-4" data-theme="dark"><Folder title="Maten" inline>{p.styleFolders.maten}</Folder><Folder title="Effect" inline defaultOpen={false}>{p.styleFolders.effect}</Folder></div></> },
   ],
   installatie: [{ id: "code", label: "Code", icon: <I.Code />, render: (p) => p.exportPanel }],
 };

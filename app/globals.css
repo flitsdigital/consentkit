@@ -83,8 +83,9 @@ textarea.field { @apply h-auto py-1.5 leading-snug; }
 
 .swatch { outline: 1px solid oklch(1 0 0 / 0.1); outline-offset: -1px; }
 
-/* DialKit custom layout (eigen controls in .dialkit-root) */
-.dialkit-root { --dial-glass-bg: transparent; --dial-shadow: none; }
+/* DialKit custom layout (eigen controls in .dialkit-root). Popovers/dropdowns houden hun dekkende glass-bg. */
+.dialkit-root { --dial-shadow: none; }
+.dialkit-root .dialkit-panel-inner { background: transparent; }
 .var-btn {
   @apply flex size-9 shrink-0 items-center justify-center rounded-lg text-muted;
   background: var(--dial-surface);
@@ -118,7 +119,7 @@ textarea.field { @apply h-auto py-1.5 leading-snug; }
 .texts .dialkit-folder-inner { padding: 0 2px; }
 /* Eén scheidingslijn per folder (border-top); DialKit zet er anders ook een border-bottom onder */
 .texts .dialkit-folder { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
-.texts > .dialkit-folder:first-child { border-top: 0; }
+.texts > :first-child > .dialkit-folder, .texts > .dialkit-folder:first-child { border-top: 0; }
 /* Categorie slepen: handle links van de folder-titel, indicator-lijn boven/onder de drop-plek */
 .drag-row { position: relative; }
 .drag-row > .dialkit-folder > .dialkit-folder-header .dialkit-folder-title { padding-left: 18px; }

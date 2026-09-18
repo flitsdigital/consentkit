@@ -1,9 +1,9 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
-import { ButtonGroup, ColorControl, Folder, Slider, TextControl, useDialKitController, type DialConfig } from "dialkit";
-import { parse } from "culori";
+import { ButtonGroup, ColorControl, DialRoot, DialStore, Folder, PresetManager, Slider, TextControl, TransitionControl, useDialKitController, type DialConfig, type EasingConfig, type Preset } from "dialkit";
+import { formatRgb, parse } from "culori";
 import { FocusLayout, InspectorLayout, PrototypeSwitcher, RailInspectorLayout, SidebarLayout, StepsLayout, StudioLayout, StudioV2Layout, type Parts } from "./prototype-layouts";
 import { AUTO_VARS, COLOR_VARS, DEFAULTS, VAR_NAMES, contrast, deriveAuto, hex, keyFromUrl, mapToVars, renderCustomCss, toPx, type Extracted, type VarName, type Vars } from "@/lib/mapping";
 
@@ -40,9 +40,17 @@ const DIAL: Record<string, { v: VarName; range?: [number, number, number?]; text
   "maten.switchHoogte": { v: "--cb-switch-height", range: [16, 40] },
   "maten.switchPadding": { v: "--cb-switch-padding", range: [0, 8] },
   "maten.zIndex": { v: "--cb-z-index", range: [1, 99999, 1] },
-  "effect.schaduw": { v: "--cb-shadow", text: true },
-  "effect.easing": { v: "--cb-ease", text: true },
 };
+// Effect: schaduw als x/y/blur/opacity (kleur volgt --cb-color), easing als DialKit-bézier. Geen tekstvelden meer.
+type Shadow = { x: number; y: number; blur: number; opacity: number };
+const parseShadow = (v: string): Shadow => { const m = v.match(/(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px\s+rgba?\([^)]*?([\d.]+)\)/); return m ? { x: +m[1], y: +m[2], blur: +m[3], opacity: +m[4] } : { x: 0, y: 12, blur: 40, opacity: 0.18 }; };
+const parseEase = (v: string): EasingConfig => { const m = v.match(/cubic-bezier\(([^)]+)\)/); const e = m?.[1].split(",").map(Number); return { type: "easing", duration: 0.25, ease: e?.length === 4 ? (e as EasingConfig["ease"]) : [0.32, 0.72, 0, 1] }; };
+const shadowCss = (sh: Shadow, color: string) => `${sh.x} ${sh.y}px ${sh.blur}px ${formatRgb({ ...parse(color)!, alpha: sh.opacity })}`.replace(/^0 /, "0 ");
+const easeCss = (e: EasingConfig) => `cubic-bezier(${e.ease.join(", ")})`;
+const effectConfig = (vars: Vars): DialConfig => { const sh = parseShadow(vars["--cb-shadow"]); return { schaduwX: [sh.x, -40, 40], schaduwY: [sh.y, -40, 60], schaduwBlur: [sh.blur, 0, 120], schaduwOpacity: [sh.opacity, 0, 1, 0.01], easing: parseEase(vars["--cb-ease"]), replay: { type: "action", label: "Speel switch-animatie af" } }; };
+// Toets vasthouden + scrollen/slepen tunet de slider zonder naar het paneel te kijken
+const NO_PRESETS: Preset[] = [];
+const SHORTCUTS = { "maten.padding": { key: "p" }, "maten.offset": { key: "o" }, "maten.kaartRadius": { key: "r" }, "maten.knopRadius": { key: "k" }, "typografie.tekst": { key: "t" }, "effect.schaduwBlur": { key: "b" } } as const;
 type DialValues = Record<string, Record<string, string | number>>;
 
 const num = (d: (typeof DIAL)[string], v: string) => (d.v === "--cb-z-index" ? Number(v) : toPx(v) ?? toPx(DEFAULTS[d.v])!);
@@ -57,7 +65,7 @@ const toDial = (vars: Vars, config = false) => {
   }
   return out;
 };
-const dialConfig = (vars: Vars) => toDial(vars, true) as DialConfig;
+const dialConfig = (vars: Vars) => ({ ...toDial(vars, true), effect: effectConfig(vars) }) as DialConfig;
 const toVars = (values: DialValues): Vars => {
   const vars = { ...DEFAULTS } as Vars;
   for (const [path, d] of Object.entries(DIAL)) {
@@ -65,6 +73,11 @@ const toVars = (values: DialValues): Vars => {
     const val = values[folder]?.[k];
     if (val === undefined) continue;
     vars[d.v] = typeof val === "number" ? (d.v === "--cb-z-index" ? String(val) : `${val}px`) : val;
+  }
+  const fx = values.effect as unknown as { schaduwX: number; schaduwY: number; schaduwBlur: number; schaduwOpacity: number; easing: EasingConfig } | undefined;
+  if (fx?.easing?.ease) {
+    vars["--cb-shadow"] = shadowCss({ x: fx.schaduwX, y: fx.schaduwY, blur: fx.schaduwBlur, opacity: fx.schaduwOpacity }, vars["--cb-color"]);
+    vars["--cb-ease"] = easeCss(fx.easing);
   }
   return vars;
 };
@@ -129,7 +142,12 @@ export function Configurator({ files }: { files: Files }) {
     })));
 
   const [config] = useState(() => dialConfig(Object.fromEntries(VAR_NAMES.map((n) => { const p = params.get(n.slice(2)); return [n, p && !p.startsWith("var(") ? p : DEFAULTS[n]]; })) as Vars));
-  const dial = useDialKitController("Banner", config, { id: "banner" });
+  const frame = useRef<HTMLIFrameElement>(null);
+  const replay = () => { setPrefsOpen(true); setTimeout(() => frame.current?.contentWindow?.postMessage({ cb: "replay" }, "*"), prefsOpen ? 0 : 400); };
+  const dial = useDialKitController("Banner", config, { id: "banner", shortcuts: SHORTCUTS, onAction: (p) => p === "effect.replay" && replay() });
+  // Versies (DialKit-presets): A/B voor de klant. In-memory voor deze sessie.
+  const presets = useSyncExternalStore((cb) => DialStore.subscribe("banner", cb), () => DialStore.getPresets("banner"), () => NO_PRESETS);
+  const activePreset = useSyncExternalStore((cb) => DialStore.subscribe("banner", cb), () => DialStore.getActivePresetId("banner"), () => null);
   const values = dial.values as unknown as DialValues;
   const resolved = useMemo(() => toVars(values), [values]); // altijd hex/px: preview + contrast
   const vars = useMemo(() => ({ ...resolved, ...Object.fromEntries(Object.entries(bindings).filter(([, v]) => v !== "auto").map(([n, v]) => [n, `var(${v})`])) }) as Vars, [resolved, bindings]); // export
@@ -252,6 +270,7 @@ document.addEventListener("click", function (e) {
   if (act === "settings" || act === "save") parent.postMessage({ cb: act }, "*");
   if (a.hasAttribute("data-cb-toggle")) { var on = a.classList.toggle("is-on"); a.setAttribute("aria-checked", String(on)); }
 });
+addEventListener("message", function (e) { if (e.data && e.data.cb === "replay") { var t = document.querySelector("[data-cb-toggle]"); if (t) t.click(); } });
 </script></body></html>`;
 
   function flash(name: string) { setCopied(name); setTimeout(() => setCopied(""), 1600); }
@@ -334,8 +353,24 @@ document.addEventListener("click", function (e) {
       </div>
     );
   };
-  const slider = (path: string) => { const d = DIAL[path]; const [f, k] = path.split("."); return <Slider key={path} label={label(k)} value={Number(values[f]?.[k] ?? 0)} onChange={(v) => dial.setValue(path, v)} min={d.range![0]} max={d.range![1]} step={d.range![2] ?? 1} unit={d.v === "--cb-z-index" ? "" : "px"} />; };
-  const text = (path: string) => { const [f, k] = path.split("."); return <TextControl key={path} label={label(k)} value={String(values[f]?.[k] ?? "")} onChange={(v) => dial.setValue(path, v)} />; };
+  const sliderFor = (path: string, range: readonly [number, number, number?], unit = "px", lbl?: string) => { const [f, k] = path.split("."); return <Slider key={path} label={lbl ?? label(k)} value={Number(values[f]?.[k] ?? 0)} onChange={(v) => dial.setValue(path, v)} min={range[0]} max={range[1]} step={range[2] ?? 1} unit={unit} shortcut={(SHORTCUTS as Record<string, { key: string }>)[path]} />; };
+  const slider = (path: string) => { const d = DIAL[path]; return sliderFor(path, d.range!, d.v === "--cb-z-index" ? "" : "px"); };
+  const fx = values.effect as unknown as { easing: EasingConfig } | undefined;
+  const effectPanel = (
+    <div className="flex flex-col gap-1.5">
+      {sliderFor("effect.schaduwX", [-40, 40], "px", "Schaduw x")}
+      {sliderFor("effect.schaduwY", [-40, 60], "px", "Schaduw y")}
+      {sliderFor("effect.schaduwBlur", [0, 120], "px", "Schaduw blur")}
+      {sliderFor("effect.schaduwOpacity", [0, 1, 0.01], "", "Schaduw opacity")}
+      {fx?.easing?.ease && <TransitionControl panelId="banner" path="effect.easing" label="Switch-easing" value={fx.easing} onChange={(v) => dial.setValue("effect.easing", v as unknown as string)} hideDuration />}
+      <ButtonGroup buttons={[{ label: "Speel switch-animatie af", onClick: replay }]} />
+    </div>
+  );
+  const versions = (
+    <div className="dialkit-root px-3 pb-2" data-theme="dark">
+      <PresetManager panelId="banner" presets={presets} activePresetId={activePreset} onAdd={() => DialStore.saveNewPreset("banner")} />
+    </div>
+  );
   const paths = (folder: string) => Object.keys(DIAL).filter((p) => p.startsWith(folder + "."));
 
   const domain = (() => { try { return new URL(url).hostname; } catch { return "Nieuwe banner"; } })();
@@ -481,7 +516,7 @@ document.addEventListener("click", function (e) {
     kleuren: <div className="flex flex-col gap-1.5">{paths("kleuren").map(colorRow)}</div>,
     typografie: <div className="flex flex-col gap-1.5">{paths("typografie").map(slider)}</div>,
     maten: <div className="flex flex-col gap-1.5">{paths("maten").map(slider)}</div>,
-    effect: <div className="flex flex-col gap-1.5">{paths("effect").map(text)}</div>,
+    effect: effectPanel,
   };
   const stylePanel = (
     <div className="dialkit-root px-3 pb-4" data-theme="dark">
@@ -513,6 +548,7 @@ document.addEventListener("click", function (e) {
   );
   const preview = (
     <iframe
+      ref={frame}
       title="Preview"
       srcDoc={srcdoc}
       data-testid="preview"
@@ -521,12 +557,14 @@ document.addEventListener("click", function (e) {
     />
   );
 
-  const parts: Parts = { domain, urlForm, errorLine, previewControls, shareBtn, foundPanel, generalTexts, categoryList, textsPanel, contrastStrip, styleFolders, stylePanel, behaviourPanel, exportPanel, preview, version: files.version, hasSite: !!extracted };
+  const parts: Parts = { domain, urlForm, errorLine, previewControls, shareBtn, foundPanel, generalTexts, categoryList, textsPanel, contrastStrip, versions, styleFolders, stylePanel, behaviourPanel, exportPanel, preview, version: files.version, hasSite: !!extracted };
   const variant = params.get("variant") ?? "G";
   const Layout = { A: StudioLayout, B: InspectorLayout, C: FocusLayout, D: RailInspectorLayout, E: SidebarLayout, F: StepsLayout, G: StudioV2Layout }[variant] ?? StudioV2Layout;
   return (
     <>
       <Layout {...parts} />
+      {/* Onzichtbare DialRoot: levert alleen de globale shortcut-listener (toets + scroll) voor onze eigen layout */}
+      <div hidden><DialRoot mode="inline" productionEnabled /></div>
       <PrototypeSwitcher current={variant} />
     </>
   );
