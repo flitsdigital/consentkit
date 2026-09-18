@@ -20,7 +20,7 @@ describe("mapToVars", () => {
     expect(v["--cb-color-background"]).toBe("#ffffff");
     expect(v["--cb-color-accent"]).toBe("#0f4c81");
     expect(v["--cb-color-accent-text"]).toBe("#ffffff");
-    expect(v["--cb-color-surface"]).toBe("#f2f2f2");
+    expect(v["--cb-color-surface"]).toBe("#f2f4f7"); // lichtste tint van de site
     expect(v["--cb-border-radius"]).toBe("16px");
     expect(v["--cb-button-radius"]).toBe("6px");
     expect(v["--cb-font-size"]).toBe("17px");
@@ -47,7 +47,7 @@ describe("mapToVars", () => {
 
 it("renderCustomCss vervangt alleen :root-waarden", () => {
   const src = readFileSync("public/consent/custom.css", "utf8");
-  expect(renderCustomCss(src, { ...DEFAULTS })).toBe(src.replace("--cb-color-background: #fff;", "--cb-color-background: #fff;"));
+  expect(renderCustomCss(src, { ...DEFAULTS })).toBe(src);
   const out = renderCustomCss(src, { ...DEFAULTS, "--cb-color-accent": "#123456", "--cb-offset": "20px" });
   expect(out).toContain("--cb-color-accent: #123456;\n");
   expect(out).toContain("--cb-color-accent-text: #1b020d; /* donker op roze");

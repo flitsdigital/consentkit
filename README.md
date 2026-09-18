@@ -2,7 +2,9 @@
 
 Eén pagina die van een website-URL de kleuren/radii/font-sizes haalt, ze mapt op de `--cb-*`-variabelen van [flitsdigital/cookie-consent](https://github.com/flitsdigital/cookie-consent) en de installatiecode voor Webflow oplevert: `custom.css`, head-code, footer-code en een "Copy to Webflow"-knop voor de component.
 
-Alle banner-bestanden komen uit de source-repo (`public/consent/`, niet in git). Die repo is de enige bron van waarheid; hier staat geen eigen banner-CSS of -markup.
+Alle banner-bestanden komen uit de source-repo (`public/consent/`, niet in git). Die repo is de enige bron van waarheid; hier staat geen eigen banner-CSS of -markup. Eén uitzondering: de uitlijning (links/rechts) is een aparte `<style>`-regel in het export-paneel, los van `custom.css` — die blijft byte-voor-byte gelijk aan de bron behalve de `:root`-waarden.
+
+Dependencies: `css-tree` (parsen), `culori` (kleuren/contrast), `dialkit` (controls) en `motion` (verplichte peer van DialKit's React-adapter).
 
 ```bash
 npm install

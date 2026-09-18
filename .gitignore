@@ -42,3 +42,7 @@ next-env.d.ts
 public/consent/
 test-results/
 playwright-report/
+.agents/
+.claude/skills/
+skills-lock.json
+.claude/launch.json

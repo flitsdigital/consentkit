@@ -5,6 +5,6 @@ export async function GET(request: Request) {
   try {
     return Response.json(await extractFromUrl(url));
   } catch (e) {
-    return Response.json({ error: e instanceof Error ? e.message : "Site niet bereikbaar" }, { status: 400 });
+    return Response.json({ error: (e as Error).message || "Site niet bereikbaar" }, { status: 400 }); // extractFromUrl gooit altijd een Error
   }
 }

@@ -8,10 +8,10 @@ import { Studio, type Parts } from "./studio";
 import { AUTO_VARS, COLOR_VARS, DEFAULTS, VAR_NAMES, contrast, deriveAuto, hex, keyFromUrl, mapToVars, renderCustomCss, toPx, type Extracted, type VarName, type Vars } from "@/lib/mapping";
 
 type Files = { customCss: string; classesCss: string; componentHtml: string; clipboardJson: string; headSnippet: string; version: string };
-type Node = { _id: string; text?: boolean; v?: string; children?: string[]; data?: { xattr?: { name: string; value: string }[]; link?: { mode: string; url: string } } };
+type WfNode = { _id: string; text?: boolean; v?: string; children?: string[]; data?: { xattr?: { name: string; value: string }[]; link?: { mode: string; url: string } } };
 type Cat = { key: string; title: string; text: string; signals: string; locked?: boolean };
 // Tekstnodes in clipboard.json, in volgorde: 0 titel, 1 tekst, 2 privacylink, 3–8 drie categorieën (titel, tekst), 9–12 knoppen
-const GENERAL: [number, string][] = [[0, "Titel"], [1, "Tekst"], [2, "Privacylink"], [9, "Knop: instellingen"], [10, "Knop: opslaan"], [11, "Knop: weigeren"], [12, "Knop: accepteren"]];
+const GENERAL_TEXTS: [number, string][] = [[0, "Titel"], [1, "Tekst"], [2, "Privacylink"], [9, "Knop: instellingen"], [10, "Knop: opslaan"], [11, "Knop: weigeren"], [12, "Knop: accepteren"]];
 const DEFAULT_SIGNALS: Record<string, string> = { analytics: "analytics_storage", marketing: "ad_storage, ad_user_data, ad_personalization" };
 const slug = (t: string) => t.toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "categorie";
 const PRIVACY_HREF = "/privacybeleid"; // href in component.html / clipboard.json
@@ -20,7 +20,7 @@ const CONTRAST_PAIRS: [VarName, VarName, string][] = [["--cb-color-accent-text",
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 // DialKit-pad ↔ --cb-variabele. Sliders in px; kleuren als hex; schaduw/easing als tekst.
-const DIAL: Record<string, { v: VarName; range?: [number, number, number?] }> = {
+const DIAL: Record<string, { v: VarName; range?: [number, number, number?]; unit?: "" }> = {
   "kleuren.tekst": { v: "--cb-color" },
   "kleuren.achtergrond": { v: "--cb-color-background" },
   "kleuren.oppervlak": { v: "--cb-color-surface" },
@@ -39,20 +39,23 @@ const DIAL: Record<string, { v: VarName; range?: [number, number, number?] }> = 
   "maten.switchBreedte": { v: "--cb-switch-width", range: [32, 72] },
   "maten.switchHoogte": { v: "--cb-switch-height", range: [16, 40] },
   "maten.switchPadding": { v: "--cb-switch-padding", range: [0, 8] },
-  "maten.zIndex": { v: "--cb-z-index", range: [1, 99999, 1] },
+  "maten.zIndex": { v: "--cb-z-index", range: [1, 99999, 1], unit: "" },
 };
 // Effect: schaduw als x/y/blur/opacity (kleur volgt --cb-color), easing als DialKit-bézier. Geen tekstvelden meer.
 type Shadow = { x: number; y: number; blur: number; opacity: number };
 const parseShadow = (v: string): Shadow => { const m = v.match(/(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px\s+rgba?\([^)]*?([\d.]+)\)/); return m ? { x: +m[1], y: +m[2], blur: +m[3], opacity: +m[4] } : { x: 0, y: 12, blur: 40, opacity: 0.18 }; };
 const parseEase = (v: string): EasingConfig => { const m = v.match(/cubic-bezier\(([^)]+)\)/); const e = m?.[1].split(",").map(Number); return { type: "easing", duration: 0.25, ease: e?.length === 4 ? (e as EasingConfig["ease"]) : [0.32, 0.72, 0, 1] }; };
-const shadowCss = (sh: Shadow, color: string) => `${sh.x}px ${sh.y}px ${sh.blur}px ${formatRgb({ ...parse(color)!, alpha: sh.opacity })}`;
+const px = (n: number) => (n === 0 ? "0" : `${n}px`);
+const shadowCss = (sh: Shadow, color: string) => `${px(sh.x)} ${px(sh.y)} ${px(sh.blur)} ${formatRgb({ ...parse(color)!, alpha: sh.opacity })}`;
 const easeCss = (e: EasingConfig) => `cubic-bezier(${e.ease.join(", ")})`;
 const SHADOW: Record<keyof Shadow, { label: string; range: [number, number, number?]; unit: string }> = { x: { label: "Schaduw x", range: [-40, 40], unit: "px" }, y: { label: "Schaduw y", range: [-40, 60], unit: "px" }, blur: { label: "Schaduw blur", range: [0, 120], unit: "px" }, opacity: { label: "Schaduw opacity", range: [0, 1, 0.01], unit: "" } };
 const effectConfig = (vars: Vars): DialConfig => { const sh = parseShadow(vars["--cb-shadow"]); return { ...Object.fromEntries(Object.entries(SHADOW).map(([k, d]) => [k, [sh[k as keyof Shadow], ...d.range]])), easing: parseEase(vars["--cb-ease"]), replay: { type: "action", label: "Speel switch-animatie af" } }; };
-type Fx = Shadow & { easing?: EasingConfig };
+type EffectValues = Shadow & { easing?: EasingConfig };
 // Layout-starters: welke elementen (knoppen) en welke vorm. Kleur/radius doe je daarna in de tool.
 type Align = "links" | "midden" | "rechts";
-type Layout = { hide: string[]; patch: Partial<Vars> };
+type Binding = "auto" | `--${string}`; // "auto" = afgeleid; anders de site-variabele waaraan de kleur hangt
+type Hidden = "settings" | "save" | "reject";
+type Layout = { hide: Hidden[]; patch: Partial<Vars> };
 const STARTERS: { name: string; hint: string; layout: Layout }[] = [
   { name: "Simpel", hint: "Alleen accepteren — niet AVG-conform", layout: { hide: ["settings", "save", "reject"], patch: { "--cb-max-width": "560px", "--cb-offset": "16px" } } },
   { name: "Compleet", hint: "Instellingen, weigeren, accepteren", layout: { hide: [], patch: { "--cb-max-width": "560px", "--cb-offset": "16px" } } },
@@ -66,36 +69,30 @@ const NO_PRESETS: Preset[] = [];
 const SHORTCUTS: Record<string, ShortcutConfig> = { "maten.padding": { key: "p" }, "maten.offset": { key: "o" }, "maten.kaartRadius": { key: "r" }, "maten.knopRadius": { key: "k" }, "typografie.tekst": { key: "t" }, "effect.blur": { key: "b" } };
 type DialValues = Record<string, Record<string, string | number>>;
 
-const num = (d: (typeof DIAL)[string], v: string) => (d.v === "--cb-z-index" ? Number(v) : toPx(v) ?? toPx(DEFAULTS[d.v])!);
-const dialValue = (d: (typeof DIAL)[string], v: string) => (d.range ? num(d, v) : hex(v));
-// Zelfde vorm als de DialKit-config: { folder: { key: value } }
-const toDial = (vars: Vars, config = false) => {
-  const out: Record<string, Record<string, unknown>> = {};
-  for (const [path, d] of Object.entries(DIAL)) {
-    const [folder, k] = path.split(".");
-    const v = dialValue(d, vars[d.v]);
-    (out[folder] ??= {})[k] = config && d.range ? [v, ...d.range] : v;
-  }
-  return out;
-};
-const dialConfig = (vars: Vars) => ({ ...toDial(vars, true), effect: effectConfig(vars) }) as DialConfig;
+// Eén keer afgeleid: pad → folder/key (DialKit nest per folder)
+const ENTRIES = Object.entries(DIAL).map(([path, d]) => ({ path, folder: path.split(".")[0], key: path.split(".")[1], ...d, unit: d.unit ?? "px" }));
+type Entry = (typeof ENTRIES)[number];
+const toNumber = (d: Entry, v: string) => (d.unit === "" ? Number(v) : toPx(v) ?? toPx(DEFAULTS[d.v])!);
+const dialValue = (d: Entry, v: string) => (d.range ? toNumber(d, v) : hex(v));
+const nest = (make: (d: Entry) => unknown) => { const out: Record<string, Record<string, unknown>> = {}; for (const d of ENTRIES) (out[d.folder] ??= {})[d.key] = make(d); return out; };
+const toDialValues = (vars: Vars) => nest((d) => dialValue(d, vars[d.v])) as DialValues;
+const dialConfig = (vars: Vars) => ({ ...nest((d) => (d.range ? [dialValue(d, vars[d.v]), ...d.range] : dialValue(d, vars[d.v]))), effect: effectConfig(vars) }) as DialConfig;
 const toVars = (values: DialValues): Vars => {
   const vars = { ...DEFAULTS } as Vars;
-  for (const [path, d] of Object.entries(DIAL)) {
-    const [folder, k] = path.split(".");
-    const val = values[folder]?.[k];
+  for (const d of ENTRIES) {
+    const val = values[d.folder]?.[d.key];
     if (val === undefined) continue;
-    vars[d.v] = typeof val === "number" ? (d.v === "--cb-z-index" ? String(val) : `${val}px`) : val;
+    vars[d.v] = typeof val === "number" ? `${val}${d.unit}` : val;
   }
-  const fx = values.effect as unknown as Fx | undefined;
+  const fx = values.effect as unknown as EffectValues | undefined;
   if (fx?.easing?.ease) {
     vars["--cb-shadow"] = shadowCss(fx, vars["--cb-color"]);
     vars["--cb-ease"] = easeCss(fx.easing);
   }
   return vars;
 };
-const PATH_OF = Object.fromEntries(Object.entries(DIAL).map(([p, d]) => [d.v, p])) as Record<VarName, string>;
-const COLOR_TARGETS = Object.entries(DIAL).filter(([, d]) => COLOR_VARS.includes(d.v)).map(([p]) => ({ path: p, label: p.split(".")[1] }));
+const PATH_OF = Object.fromEntries(ENTRIES.map((d) => [d.v, d.path])) as Record<VarName, string>;
+const COLOR_TARGETS = ENTRIES.filter((d) => COLOR_VARS.includes(d.v)).map((d) => ({ path: d.path, label: d.key }));
 const RADIUS_TARGETS = [{ path: "maten.kaartRadius", label: "Kaart" }, { path: "maten.knopRadius", label: "Knop" }];
 const FONT_TARGETS = [{ path: "typografie.tekst", label: "Tekst" }, { path: "typografie.klein", label: "Klein" }, { path: "typografie.titel", label: "Titel" }];
 const shortName = (name: string) => name.replace(/^--_?/, "").replace(/\\.*$/, "");
@@ -103,7 +100,7 @@ const label = (k: string) => k.replace(/([A-Z])/g, " $1").toLowerCase().replace(
 
 export function Configurator({ files }: { files: Files }) {
   const params = useSearchParams();
-  const clipboard = useMemo(() => JSON.parse(files.clipboardJson) as { payload: { nodes: Node[] } }, [files.clipboardJson]);
+  const clipboard = useMemo(() => JSON.parse(files.clipboardJson) as { payload: { nodes: WfNode[] } }, [files.clipboardJson]);
   const originals = useMemo(() => clipboard.payload.nodes.filter((n) => n.text).map((n) => n.v ?? ""), [clipboard]);
 
   const [url, setUrl] = useState(params.get("url") ?? "");
@@ -118,8 +115,8 @@ export function Configurator({ files }: { files: Files }) {
   const [privacy, setPrivacy] = useState(params.get("privacy") ?? PRIVACY_HREF);
   const [days, setDays] = useState(Number(params.get("days")) || 180);
   const [align, setAlign] = useState<Align>((params.get("align") as Align) || "midden");
-  const [hide, setHide] = useState<string[]>(() => params.get("hide")?.split(",").filter(Boolean) ?? []);
-  const [version, setVersion] = useState(Number(params.get("v")) || 1);
+  const [hide, setHide] = useState<Hidden[]>(() => (params.get("hide")?.split(",").filter((h) => ["settings", "save", "reject"].includes(h)) ?? []) as Hidden[]);
+  const [bannerVersion, setBannerVersion] = useState(Number(params.get("v")) || 1); // consent-versie in de config, niet de scriptversie
   const [extracted, setExtracted] = useState<Extracted | null>(null);
   const [status, setStatus] = useState<{ loading?: boolean; error?: string }>({});
   const [prefsOpen, setPrefsOpen] = useState(false);
@@ -149,11 +146,11 @@ export function Configurator({ files }: { files: Files }) {
   };
   // Figma-achtige variabelen: kleur gekoppeld aan een site-variabele → export als var(--naam).
   // "auto" = afgeleid van tekst/achtergrond/accent (deriveAuto) tot de gebruiker de kleur zelf zet.
-  const [bindings, setBindings] = useState<Partial<Record<VarName, string>>>(() =>
+  const [bindings, setBindings] = useState<Partial<Record<VarName, Binding>>>(() =>
     Object.fromEntries(COLOR_VARS.flatMap((n) => {
       const p = params.get(n.slice(2));
       const m = p?.match(/^var\((--[^)]+)\)$/);
-      if (m) return [[n, m[1]]];
+      if (m) return [[n, m[1] as Binding]];
       return !p && (AUTO_VARS as readonly string[]).includes(n) ? [[n, "auto"]] : [];
     })));
 
@@ -174,7 +171,7 @@ export function Configurator({ files }: { files: Files }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolved["--cb-color"], resolved["--cb-color-background"], resolved["--cb-color-accent"], bindings]);
   const siteVars = useMemo(() => (extracted?.variables ?? []).filter((v) => !v.name.startsWith("--cb-") && (/^(#|rgb|hsl|oklch)/i.test(v.value) || /^[a-z]+$/i.test(v.value)) && parse(v.value)), [extracted]);
-  const bind = (n: VarName, name: string | null, value: string) => {
+  const bind = (n: VarName, name: Binding | null, value: string) => {
     setBindings((b) => { const next = { ...b }; if (name) next[n] = name; else delete next[n]; return next; });
     dial.setValue(PATH_OF[n], hex(value));
   };
@@ -188,12 +185,13 @@ export function Configurator({ files }: { files: Files }) {
     if (days !== 180) q.set("days", String(days));
     if (align !== "midden") q.set("align", align);
     if (hide.length) q.set("hide", hide.join(","));
-    if (version !== 1) q.set("v", String(version));
-    VAR_NAMES.forEach((n) => vars[n] !== DEFAULTS[n] && bindings[n] !== "auto" && q.set(n.slice(2), vars[n]));
-    GENERAL.forEach(([i]) => texts[i] !== originals[i] && q.set(`t${i}`, texts[i]));
+    if (bannerVersion !== 1) q.set("v", String(bannerVersion));
+    const same = (n: VarName) => (COLOR_VARS.includes(n) && !vars[n].startsWith("var(") ? hex(vars[n]) === hex(DEFAULTS[n]) : vars[n] === DEFAULTS[n]);
+    VAR_NAMES.forEach((n) => !same(n) && bindings[n] !== "auto" && q.set(n.slice(2), vars[n]));
+    GENERAL_TEXTS.forEach(([i]) => texts[i] !== originals[i] && q.set(`t${i}`, texts[i]));
     if (JSON.stringify(cats) !== JSON.stringify(defaultCats)) q.set("cats", JSON.stringify(cats));
     window.history.replaceState(null, "", q.size ? `?${q}` : location.pathname);
-  }, [url, key, privacy, days, version, align, hide, vars, texts, cats, defaultCats, originals, bindings]);
+  }, [url, key, privacy, days, bannerVersion, align, hide, vars, texts, cats, defaultCats, originals, bindings]);
 
   async function extract(target: string, apply: boolean) {
     setStatus({ loading: true });
@@ -205,8 +203,10 @@ export function Configurator({ files }: { files: Files }) {
       const found = new Map((json as Extracted).variables.map((v) => [v.name, v.value]));
       for (const [n, name] of Object.entries(bindings)) if (found.has(name)) dial.setValue(PATH_OF[n as VarName], hex(found.get(name)!));
       if (apply) {
-        dial.setValues(toDial(mapToVars(json)) as DialValues);
-        setBindings((b) => ({ ...b, ...Object.fromEntries(AUTO_VARS.map((n) => [n, "auto"])) }));
+        const mapped = mapToVars(json);
+        const auto = deriveAuto(mapped);
+        dial.setValues(toDialValues(mapped));
+        setBindings((b) => { const n = { ...b }; for (const a of AUTO_VARS) if (mapped[a] === auto[a]) n[a] = "auto"; else delete n[a]; return n; });
         setKey(keyFromUrl(target));
       }
       setStatus({});
@@ -230,7 +230,7 @@ export function Configurator({ files }: { files: Files }) {
   // Rij 1 (Noodzakelijk) en rij 2 (Statistieken) uit de bron zijn de templates voor vaste resp. schakelbare categorieën.
   const fill = (tpl: string, from: Cat, to: Cat) => tpl.replaceAll(`>${esc(from.title)}<`, `>${esc(to.title)}<`).replaceAll(`aria-label="${esc(from.title)}"`, `aria-label="${esc(to.title)}"`).replaceAll(`>${esc(from.text)}<`, `>${esc(to.text)}<`).replaceAll(`data-cb-toggle="${from.key}"`, `data-cb-toggle="${esc(to.key)}"`);
   const applyTextsHtml = (html: string) => {
-    const h = GENERAL.reduce((acc, [i]) => acc.replaceAll(`>${esc(originals[i])}<`, `>${esc(texts[i])}<`), html).replace(`href="${PRIVACY_HREF}"`, `href="${esc(privacy)}"`);
+    const h = GENERAL_TEXTS.reduce((acc, [i]) => acc.replaceAll(`>${esc(originals[i])}<`, `>${esc(texts[i])}<`), html).replace(`href="${PRIVACY_HREF}"`, `href="${esc(privacy)}"`);
     const [before, rest] = h.split('<div data-cb="prefs" class="cb-prefs">');
     const [inner, after] = rest.split('<div class="cb-actions">');
     const [, ...rows] = inner.split('<div class="cb-row">');
@@ -245,10 +245,10 @@ export function Configurator({ files }: { files: Files }) {
     const prefs = src.find((n) => n.data?.xattr?.some((a) => a.name === "data-cb" && a.value === "prefs"))!;
     const subtree = (id: string): string[] => [id, ...(byId.get(id)?.children ?? []).flatMap(subtree)];
     const oldRows = new Set(prefs.children!.flatMap(subtree));
-    const out: Node[] = [];
+    const out: WfNode[] = [];
     const clone = (id: string, from: Cat, to: Cat): string => {
       const n = byId.get(id)!;
-      const c: Node = { ...n, _id: crypto.randomUUID() };
+      const c: WfNode = { ...n, _id: crypto.randomUUID() };
       if (n.text) c.v = n.v === from.title ? to.title : n.v === from.text ? to.text : n.v;
       if (n.data?.xattr) c.data = { ...n.data, xattr: n.data.xattr.map((a) => (a.name === "aria-label" && a.value === from.title ? { ...a, value: to.title } : a.name === "data-cb-toggle" ? { ...a, value: to.key } : a)) };
       if (n.children) c.children = n.children.map((ch) => clone(ch, from, to));
@@ -256,11 +256,11 @@ export function Configurator({ files }: { files: Files }) {
       return c._id;
     };
     const rowIds = cats.map((c) => clone(prefs.children![c.locked ? 0 : 1], defaultCats[c.locked ? 0 : 1], c));
-    const hidden = new Set(src.filter((n) => n.data?.xattr?.some((a) => a.name === "data-cb-action" && hide.includes(a.value))).flatMap((n) => subtree(n._id)));
+    const hidden = new Set(src.filter((n) => n.data?.xattr?.some((a) => a.name === "data-cb-action" && (hide as string[]).includes(a.value))).flatMap((n) => subtree(n._id)));
     const nodes = src.filter((n) => !oldRows.has(n._id) && !hidden.has(n._id)).map((n) => {
       if (n === prefs) return { ...n, children: rowIds };
       if (n.children?.some((c) => hidden.has(c))) n = { ...n, children: n.children.filter((c) => !hidden.has(c)) };
-      if (n.text) { const i = originals.indexOf(n.v ?? ""); return { ...n, v: GENERAL.some(([g]) => g === i) ? texts[i] : n.v }; }
+      if (n.text) { const i = originals.indexOf(n.v ?? ""); return { ...n, v: GENERAL_TEXTS.some(([g]) => g === i) ? texts[i] : n.v }; }
       const link = n.data?.link?.url === PRIVACY_HREF ? { ...n.data.link, url: privacy } : n.data?.link;
       return link ? { ...n, data: { ...n.data, link } } : n;
     }).concat(out);
@@ -270,8 +270,9 @@ export function Configurator({ files }: { files: Files }) {
 
   const customCss = renderCustomCss(files.customCss, vars);
   const previewCss = renderCustomCss(files.customCss, resolved);
-  const exportCss = `<style>\n${customCss}${alignCss(align) ? `\n/* consentkit: uitlijning */\n${alignCss(align)}\n` : ""}</style>`;
-  const headCode = `<script>window.FlitsConsent = { key: '${key || "flits_consent"}', version: ${version}, days: ${days}, categories: ${categoriesJs} };</script>\n${files.headSnippet.trim()}`;
+  const exportCss = `<style>\n${customCss}</style>`;
+  const exportAlign = alignCss(align) && `<style>${alignCss(align)}</style>`;
+  const headCode = `<script>window.FlitsConsent = { key: '${slug(key) === "categorie" ? "flits_consent" : slug(key)}', version: ${bannerVersion}, days: ${days}, categories: ${categoriesJs} };</script>\n${files.headSnippet.trim()}`;
   const footerCode = `<script src="https://cdn.jsdelivr.net/gh/flitsdigital/cookie-consent@${files.version}/dist/consent.min.js" defer></script>`;
 
   const srcdoc = `<!doctype html><html><head><meta name="viewport" content="width=device-width"><style>${previewCss}</style><style>${files.classesCss}</style><style>
@@ -310,7 +311,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
       {copied === name ? <><Check /> Gekopieerd</> : "Kopieer"}
     </button>
   );
-  const menuFor = (id: string, targets: { path: string; label: string }[], value: string | number, varName?: string) => (
+  const menuFor = (id: string, targets: { path: string; label: string }[], value: string | number, varName?: Binding) => (
     <div id={id} popover="auto" className="menu">
       <div className="menu-title">Gebruik als</div>
       {targets.map((t) => (
@@ -321,8 +322,8 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
   const [varQuery, setVarQuery] = useState("");
   // Kleurrij: DialKit ColorControl + variabelen-picker (Figma-stijl). Gekoppeld → chip met naam i.p.v. hex.
   const auto = deriveAuto(resolved);
-  const colorRow = (path: string) => {
-    const d = DIAL[path];
+  const colorRow = (d: Entry) => {
+    const path = d.path;
     const bound = bindings[d.v];
     const id = `pick-${d.v.slice(5)}`;
     const q = varQuery.toLowerCase();
@@ -330,7 +331,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
       <div key={path} className="flex items-center gap-1.5">
         {bound ? (
           <div className="dialkit-color-control flex-1" data-bound>
-            <span className="dialkit-color-label">{label(path.split(".")[1])}</span>
+            <span className="dialkit-color-label">{label(d.key)}</span>
             <button type="button" popoverTarget={id} title={bound === "auto" ? "Afgeleid van tekst/achtergrond/accent" : bound} className={`var-chip ${bound === "auto" ? "auto-chip" : ""}`}>
               <span className="swatch size-3.5 shrink-0 rounded-sm" style={{ background: resolved[d.v] }} />
               <span className="truncate">{bound === "auto" ? `Auto · ${resolved[d.v]}` : shortName(bound)}</span>
@@ -338,7 +339,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
             <button type="button" className="var-detach" title="Loskoppelen" aria-label="Loskoppelen" onClick={() => bind(d.v, null, resolved[d.v])}><Unlink /></button>
           </div>
         ) : (
-          <div className="min-w-0 flex-1"><ColorControl label={label(path.split(".")[1])} value={String(values[path.split(".")[0]]?.[path.split(".")[1]] ?? "#000000")} onChange={(v) => dial.setValue(path, v)} /></div>
+          <div className="min-w-0 flex-1"><ColorControl label={label(d.key)} value={String(values[d.folder]?.[d.key] ?? "#000000")} onChange={(v) => dial.setValue(path, v)} /></div>
         )}
         {!bound && <button type="button" popoverTarget={id} className="var-btn" title="Variabele van de site" aria-label="Variabele kiezen" disabled={!siteVars.length}><VarIcon /></button>}
         <div id={id} popover="auto" className="menu w-64" style={{ positionArea: "bottom span-left" }}>
@@ -351,7 +352,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
               </button>
             )}
             {siteVars.filter((v) => !q || v.name.toLowerCase().includes(q) || v.value.includes(q)).map((v) => (
-              <button key={v.name} type="button" className="menu-item" popoverTarget={id} popoverTargetAction="hide" title={v.name} onClick={() => bind(d.v, v.name, v.value)} aria-current={bound === v.name}>
+              <button key={v.name} type="button" className="menu-item" popoverTarget={id} popoverTargetAction="hide" title={v.name} onClick={() => bind(d.v, v.name as Binding, v.value)} aria-current={bound === v.name}>
                 <span className="swatch size-4 shrink-0 rounded" style={{ background: v.value }} />
                 <span className="truncate font-mono text-[11px]">{shortName(v.name)}</span>
                 <span className="ml-auto shrink-0 font-mono text-[10px] text-muted">{hex(v.value)}</span>
@@ -373,8 +374,8 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
     );
   };
   const sliderFor = (path: string, range: readonly [number, number, number?], unit = "px", lbl?: string) => { const [f, k] = path.split("."); return <Slider key={path} label={lbl ?? label(k)} value={Number(values[f]?.[k] ?? 0)} onChange={(v) => dial.setValue(path, v)} min={range[0]} max={range[1]} step={range[2] ?? 1} unit={unit} shortcut={SHORTCUTS[path]} />; };
-  const slider = (path: string) => { const d = DIAL[path]; return sliderFor(path, d.range!, d.v === "--cb-z-index" ? "" : "px"); };
-  const fx = values.effect as unknown as Fx | undefined;
+  const slider = (d: Entry) => sliderFor(d.path, d.range!, d.unit);
+  const fx = values.effect as unknown as EffectValues | undefined;
   const effectPanel = (
     <div className="flex flex-col gap-1.5">
       {Object.entries(SHADOW).map(([k, d]) => sliderFor(`effect.${k}`, d.range, d.unit, d.label))}
@@ -384,7 +385,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
   );
   const applyLayout = (l: Layout) => {
     setHide(l.hide);
-    dial.setValues(toDial({ ...resolved, ...l.patch }) as DialValues);
+    dial.setValues(toDialValues({ ...resolved, ...l.patch }));
   };
   const starters = (
     <div className="px-3 pb-4">
@@ -410,7 +411,8 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
       </div>
     </div>
   );
-  const toggleHide = (a: string, on: boolean) => setHide((h) => (on ? h.filter((x) => x !== a && (a !== "settings" || x !== "save")) : [...new Set([...h, a, ...(a === "settings" ? ["save"] : [])])]));
+  // "Keuze opslaan" bestaat alleen met een instellingen-knop
+  const toggleHide = (a: Hidden, on: boolean) => setHide((h) => { const linked: Hidden[] = a === "settings" ? [a, "save"] : [a]; return on ? h.filter((x) => !linked.includes(x)) : [...new Set([...h, ...linked])]; });
   const layoutPanel = (
     <div className="flex flex-col gap-1.5">
       <SelectControl label="Uitlijning" value={align} options={[{ value: "links", label: "Links" }, { value: "midden", label: "Midden" }, { value: "rechts", label: "Rechts" }]} onChange={(v) => setAlign(v as Align)} />
@@ -418,12 +420,8 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
       <Toggle label="Knop: weigeren" checked={!hide.includes("reject")} onChange={(on) => toggleHide("reject", on)} />
     </div>
   );
-  const versions = (
-    <div className="dialkit-root px-3 pb-2" data-theme="dark">
-      <PresetManager panelId="banner" presets={presets} activePresetId={activePreset} onAdd={() => DialStore.saveNewPreset("banner")} />
-    </div>
-  );
-  const paths = (folder: string) => Object.keys(DIAL).filter((p) => p.startsWith(folder + "."));
+  const versions = <PresetManager panelId="banner" presets={presets} activePresetId={activePreset} onAdd={() => DialStore.saveNewPreset("banner")} />;
+  const entries = (folder: string) => ENTRIES.filter((d) => d.folder === folder);
 
   const domain = (() => { try { return new URL(url).hostname; } catch { return "Nieuwe banner"; } })();
 
@@ -473,7 +471,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
                   <span className="truncate font-mono text-[11px] text-fg/80">{shortName(v.name)}</span>
                   <span className="ml-auto shrink-0 font-mono text-[10px] text-muted">{hex(v.value)}</span>
                 </button>
-                {menuFor(`v${i}`, COLOR_TARGETS, v.value, v.name)}
+                {menuFor(`v${i}`, COLOR_TARGETS, v.value, v.name as Binding)}
               </span>
             ))}
           </div>
@@ -503,7 +501,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
   );
   const generalTexts = (
     <div className="flex flex-col gap-1.5">
-      {GENERAL.map(([i, lbl]) => (
+      {GENERAL_TEXTS.map(([i, lbl]) => (
         <Fragment key={i}>
           <TextControl label={lbl} value={texts[i]} onChange={(v) => setTexts((s) => s.map((x, j) => (j === i ? v : x)))} />
           {i === 2 && <TextControl label="Privacy-URL" value={privacy} onChange={setPrivacy} placeholder="/privacybeleid" />}
@@ -559,25 +557,26 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
     </div>
   );
   const styleFolders = {
-    kleuren: <div className="flex flex-col gap-1.5">{paths("kleuren").map(colorRow)}</div>,
-    typografie: <div className="flex flex-col gap-1.5">{paths("typografie").map(slider)}</div>,
+    kleuren: <div className="flex flex-col gap-1.5">{entries("kleuren").map(colorRow)}</div>,
+    typografie: <div className="flex flex-col gap-1.5">{entries("typografie").map(slider)}</div>,
     layout: layoutPanel,
-    maten: <div className="flex flex-col gap-1.5">{paths("maten").map(slider)}</div>,
+    maten: <div className="flex flex-col gap-1.5">{entries("maten").map(slider)}</div>,
     effect: effectPanel,
   };
   const behaviourPanel = (
-    <div className="dialkit-root texts px-1 pb-4" data-theme="dark">
+    <>
       <div className="flex flex-col gap-1.5">
         <TextControl label="Opslag-key (localStorage / cookie)" value={key} onChange={setKey} placeholder="klant_consent" />
         <TextControl label="Geldigheid (dagen)" value={String(days)} onChange={(v) => setDays(Number(v) || 180)} />
-        <TextControl label="Versie (verhoog = opnieuw vragen)" value={String(version)} onChange={(v) => setVersion(Number(v) || 1)} />
+        <TextControl label="Versie (verhoog = opnieuw vragen)" value={String(bannerVersion)} onChange={(v) => setBannerVersion(Number(v) || 1)} />
       </div>
       <p className="px-3 pt-3 text-[11px] leading-relaxed text-muted">Consent Mode v2-signalen per categorie stel je in bij <em>Banner → Categorieën</em>.</p>
-    </div>
+    </>
   );
   const exportPanel = (
     <div className="space-y-4 px-3 pb-4">
       <Step n={1} title="custom.css" sub="Site settings → Custom code → Head" action={copyBtn("css", exportCss)}><pre className="code max-h-44">{exportCss}</pre></Step>
+      {exportAlign && <Step n={1} title="Uitlijning" sub="Onder custom.css plakken (buiten de source-repo)" action={copyBtn("align", exportAlign)}><pre className="code">{exportAlign}</pre></Step>}
       <Step n={2} title="Head-code" sub="Boven GTM" action={copyBtn("head", headCode)}><pre className="code max-h-32">{headCode}</pre></Step>
       <Step n={3} title="Footer-code" sub={`v${files.version}`} action={copyBtn("footer", footerCode)}><pre className="code">{footerCode}</pre></Step>
       <Step n={4} title="Component" sub="Plak met ⌘V in de Webflow Designer">

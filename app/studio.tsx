@@ -30,7 +30,7 @@ const TAB_IDS = Object.keys(TABS) as Tab[];
 
 /* ---------- Iconen ---------- */
 const svg = (d: ReactNode) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{d}</svg>;
-const I = {
+const Icon = {
   Text: () => svg(<><path d="M3 4h10M3 8h10M3 12h6" /></>),
   List: () => svg(<><path d="M5 4h8M5 8h8M5 12h8" /><circle cx="2.5" cy="4" r=".8" fill="currentColor" /><circle cx="2.5" cy="8" r=".8" fill="currentColor" /><circle cx="2.5" cy="12" r=".8" fill="currentColor" /></>),
   Sliders: () => svg(<><path d="M2 4h12M2 8h12M2 12h12" /><circle cx="6" cy="4" r="1.5" fill="var(--color-panel)" /><circle cx="10" cy="8" r="1.5" fill="var(--color-panel)" /><circle cx="5" cy="12" r="1.5" fill="var(--color-panel)" /></>),
@@ -44,22 +44,24 @@ const I = {
 export const Cookie = () => <svg width="18" height="18" viewBox="0 0 24 24" className="text-accent" aria-hidden><path fillRule="evenodd" clipRule="evenodd" fill="currentColor" d="M2 12C2 6.47715 6.47715 2 12 2C12.3853 2 12.7659 2.02184 13.1406 2.06443L14.1463 2.17875L14.0198 3.18304C14.0068 3.28644 14 3.39219 14 3.5C14 4.76634 14.9425 5.81419 16.1638 5.97771L16.9209 6.07907L17.0223 6.83617C17.1858 8.05754 18.2337 9 19.5 9C19.8094 9 20.1035 8.94425 20.3743 8.84314L21.4192 8.45303L21.6934 9.53406C21.8938 10.3239 22 11.1503 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12ZM10 8.5C10 9.32843 9.32843 10 8.5 10C7.67157 10 7 9.32843 7 8.5C7 7.67157 7.67157 7 8.5 7C9.32843 7 10 7.67157 10 8.5ZM14 11.5C14 12.3284 13.3284 13 12.5 13C11.6716 13 11 12.3284 11 11.5C11 10.6716 11.6716 10 12.5 10C13.3284 10 14 10.6716 14 11.5ZM17 15C17.5523 15 18 14.5523 18 14C18 13.4477 17.5523 13 17 13C16.4477 13 16 13.4477 16 14C16 14.5523 16.4477 15 17 15ZM13 16.5C13 17.3284 12.3284 18 11.5 18C10.6716 18 10 17.3284 10 16.5C10 15.6716 10.6716 15 11.5 15C12.3284 15 13 15.6716 13 16.5ZM7 15C7.55228 15 8 14.5523 8 14C8 13.4477 7.55228 13 7 13C6.44772 13 6 13.4477 6 14C6 14.5523 6.44772 15 7 15Z" /></svg>;
 const Arrow = () => <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12L12 4M6 4h6v6" /></svg>;
 
+// DialKit-controls moeten in een .dialkit-root staan; "texts" = gestapelde tekstvelden
+const Dk = ({ texts, children }: { texts?: boolean; children: ReactNode }) => <div className={texts ? "dialkit-root texts px-1 pb-4" : "dialkit-root px-3 pb-4"} data-theme="dark">{children}</div>;
 // Secties per tab (rail + paneel)
 type Section = { id: string; label: string; icon: ReactNode; render: (p: Parts) => ReactNode };
 const SECTIONS: Record<Tab, Section[]> = {
   banner: [
-    { id: "teksten", label: "Teksten", icon: <I.Text />, render: (p) => <div className="dialkit-root texts px-1 pb-4" data-theme="dark"><Folder title="Algemeen" inline>{p.generalTexts}</Folder></div> },
-    { id: "categorieen", label: "Categorieën", icon: <I.List />, render: (p) => <div className="dialkit-root texts px-1 pb-4" data-theme="dark">{p.categoryList}</div> },
+    { id: "teksten", label: "Teksten", icon: <Icon.Text />, render: (p) => <Dk texts><Folder title="Algemeen" inline>{p.generalTexts}</Folder></Dk> },
+    { id: "categorieen", label: "Categorieën", icon: <Icon.List />, render: (p) => <Dk texts>{p.categoryList}</Dk> },
   ],
-  gedrag: [{ id: "opslag", label: "Opslag", icon: <I.Sliders />, render: (p) => p.behaviourPanel }],
+  gedrag: [{ id: "opslag", label: "Opslag", icon: <Icon.Sliders />, render: (p) => <Dk texts>{p.behaviourPanel}</Dk> }],
   stijl: [
-    { id: "site", label: "Site", icon: <I.Globe />, render: (p) => <div className="space-y-3 px-3 pb-4"><div>{p.urlForm}</div>{p.errorLine}{p.foundPanel}</div> },
-    { id: "starters", label: "Starters", icon: <I.Spark />, render: (p) => p.starters },
-    { id: "kleuren", label: "Kleuren", icon: <I.Palette />, render: (p) => <>{p.versions}{p.contrastStrip}<div className="dialkit-root px-3 pb-4" data-theme="dark"><Folder title="Kleuren" inline>{p.styleFolders.kleuren}</Folder></div></> },
-    { id: "typografie", label: "Typografie", icon: <I.Type />, render: (p) => <>{p.versions}<div className="dialkit-root px-3 pb-4" data-theme="dark"><Folder title="Typografie" inline>{p.styleFolders.typografie}</Folder></div></> },
-    { id: "layout", label: "Layout", icon: <I.Ruler />, render: (p) => <>{p.versions}<div className="dialkit-root px-3 pb-4" data-theme="dark"><Folder title="Layout" inline>{p.styleFolders.layout}</Folder><Folder title="Maten" inline>{p.styleFolders.maten}</Folder><Folder title="Effect" inline defaultOpen={false}>{p.styleFolders.effect}</Folder></div></> },
+    { id: "site", label: "Site", icon: <Icon.Globe />, render: (p) => <div className="space-y-3 px-3 pb-4"><div>{p.urlForm}</div>{p.errorLine}{p.foundPanel}</div> },
+    { id: "starters", label: "Starters", icon: <Icon.Spark />, render: (p) => p.starters },
+    { id: "kleuren", label: "Kleuren", icon: <Icon.Palette />, render: (p) => <Dk>{p.versions}{p.contrastStrip}<Folder title="Kleuren" inline>{p.styleFolders.kleuren}</Folder></Dk> },
+    { id: "typografie", label: "Typografie", icon: <Icon.Type />, render: (p) => <Dk>{p.versions}<Folder title="Typografie" inline>{p.styleFolders.typografie}</Folder></Dk> },
+    { id: "layout", label: "Layout", icon: <Icon.Ruler />, render: (p) => <Dk>{p.versions}<Folder title="Layout" inline>{p.styleFolders.layout}</Folder><Folder title="Maten" inline>{p.styleFolders.maten}</Folder><Folder title="Effect" inline defaultOpen={false}>{p.styleFolders.effect}</Folder></Dk> },
   ],
-  installatie: [{ id: "code", label: "Code", icon: <I.Code />, render: (p) => p.exportPanel }],
+  installatie: [{ id: "code", label: "Code", icon: <Icon.Code />, render: (p) => p.exportPanel }],
 };
 
 const ALL_SECTIONS = TAB_IDS.flatMap((t) => SECTIONS[t].map((s) => ({ ...s, tab: t, key: `${t}.${s.id}` })));
