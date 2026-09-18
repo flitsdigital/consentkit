@@ -2,9 +2,10 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
-import { ButtonGroup, ColorControl, DialRoot, DialStore, Folder, PresetManager, SelectControl, Slider, TextControl, Toggle, TransitionControl, useDialKitController, type DialConfig, type EasingConfig, type Preset, type ShortcutConfig } from "dialkit";
+import { ButtonGroup, ColorControl, DialRoot, DialStore, Folder, PresetManager, Slider, TextControl, Toggle, TransitionControl, useDialKitController, type DialConfig, type EasingConfig, type Preset, type ShortcutConfig } from "dialkit";
 import { formatRgb, parse } from "culori";
-import { PrototypeSwitcher, Studio, type Parts } from "./studio";
+import { Studio, type Parts } from "./studio";
+import GlideSelect from "./glide-select";
 import { AUTO_VARS, COLOR_VARS, DEFAULTS, VAR_NAMES, contrast, deriveAuto, hex, keyFromUrl, mapToVars, opaque, renderCustomCss, toPx, type Extracted, type VarName, type Vars } from "@/lib/mapping";
 
 type Files = { customCss: string; classesCss: string; componentHtml: string; clipboardJson: string; headSnippet: string; version: string };
@@ -123,7 +124,7 @@ export function Configurator({ files }: { files: Files }) {
   const [mobile, setMobile] = useState(false);
   const [siteBg, setSiteBg] = useState(false);
   const [copied, setCopied] = useState("");
-  // PROTOTYPE (mobbin): afgevinkte exportstappen, extractie-samenvatting, undo-stack
+  // Afgevinkte exportstappen, extractie-samenvatting, undo-stack
   const [done, setDone] = useState<string[]>([]);
   const [summary, setSummary] = useState<string | null>(null);
   const history = useRef<DialValues[]>([]);
@@ -169,7 +170,7 @@ export function Configurator({ files }: { files: Files }) {
   const values = dial.values as unknown as DialValues;
   const resolved = useMemo(() => toVars(values), [values]); // altijd hex/px: preview + contrast
   const vars = useMemo(() => ({ ...resolved, ...Object.fromEntries(Object.entries(bindings).filter(([, v]) => v !== "auto").map(([n, v]) => [n, `var(${v})`])) }) as Vars, [resolved, bindings]); // export
-  // PROTOTYPE: undo (⌘Z) op DialKit-waarden — snapshot na 400 ms rust
+  // Undo (⌘Z) op DialKit-waarden — snapshot na 400 ms rust
   useEffect(() => {
     if (skipHistory.current) { skipHistory.current = false; return; }
     const t = setTimeout(() => { const last = history.current.at(-1); if (JSON.stringify(last) !== JSON.stringify(values)) history.current.push(structuredClone(values)); if (history.current.length > 50) history.current.shift(); }, 400);
@@ -206,7 +207,6 @@ export function Configurator({ files }: { files: Files }) {
   // Deelbare state: alles wat afwijkt van de default in de querystring
   useEffect(() => {
     const q = new URLSearchParams();
-    const variant = new URLSearchParams(location.search).get("variant"); if (variant) q.set("variant", variant); // prototype
     if (url) q.set("url", url);
     if (key) q.set("key", key);
     if (privacy !== PRIVACY_HREF) q.set("privacy", privacy);
@@ -375,7 +375,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
           <div className="min-w-0 flex-1"><ColorControl label={label(d.key)} value={String(values[d.folder]?.[d.key] ?? "#000000")} onChange={(v) => dial.setValue(path, v)} /></div>
         )}
         {!bound && <button type="button" popoverTarget={id} className="var-btn" title="Variabele van de site" aria-label="Variabele kiezen" disabled={!siteVars.length}><VarIcon /></button>}
-        <div id={id} popover="auto" className="menu w-64" style={{ positionArea: "bottom span-left" }}>
+        <div id={id} popover="auto" className="menu menu-right w-64">
           <input type="search" value={varQuery} onChange={(e) => setVarQuery(e.target.value)} placeholder="Zoek variabele…" className="field mb-1 h-7 text-xs" />
           <div className="max-h-64 overflow-y-auto">
             {(AUTO_VARS as readonly string[]).includes(d.v) && !q && (
@@ -448,7 +448,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
   const toggleHide = (a: Hidden, on: boolean) => setHide((h) => { const linked: Hidden[] = a === "settings" ? [a, "save"] : [a]; return on ? h.filter((x) => !linked.includes(x)) : [...new Set([...h, ...linked])]; });
   const layoutPanel = (
     <div className="flex flex-col gap-1.5">
-      <SelectControl label="Uitlijning" value={align} options={[{ value: "links", label: "Links" }, { value: "midden", label: "Midden" }, { value: "rechts", label: "Rechts" }]} onChange={(v) => setAlign(v as Align)} />
+      <div className="gs-row"><span>Uitlijning</span><GlideSelect ariaLabel="Uitlijning" value={align} options={[{ value: "links", label: "Links", tag: "margin-left 0" }, { value: "midden", label: "Midden", tag: "standaard" }, { value: "rechts", label: "Rechts", tag: "margin-right 0" }]} onChange={(v) => setAlign(v as Align)} size="sm" align="right" menuWidth={200} /></div>
       <Toggle label="Knop: instellingen" checked={!hide.includes("settings")} onChange={(on) => toggleHide("settings", on)} />
       <Toggle label="Knop: weigeren" checked={!hide.includes("reject")} onChange={(on) => toggleHide("reject", on)} />
     </div>
@@ -457,7 +457,6 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
   const entries = (folder: string) => ENTRIES.filter((d) => d.folder === folder);
 
   const domain = (() => { try { return new URL(url).hostname; } catch { return "Nieuwe banner"; } })();
-  const isProto = params.get("variant") !== "A"; // PROTOTYPE: B (default) = alle Mobbin-verbeteringen, A = huidig
 
   // ---- Onderdelen; de Studio-layout zet ze neer ----
   const urlForm = (
@@ -493,8 +492,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
     <p className="px-1 pt-6 text-center text-xs leading-relaxed text-muted">Plak een URL en klik <em>Stijl ophalen</em>. Kleuren, radii en font-sizes van de site verschijnen hier.</p>
   ) : (
     <div className="space-y-5">
-      {isProto && (
-        <Section title="Belangrijkste kleuren">
+      <Section title="Belangrijkste kleuren">
           <div className="grid grid-cols-2 gap-1.5">
             {extracted.colors.slice(0, 6).map((c, i) => (
               <span key={c.value} className="relative">
@@ -508,7 +506,6 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
             ))}
           </div>
         </Section>
-      )}
       <Section title="Kleuren" hint={`${extracted.colors.length}`}>
         <div className="grid grid-cols-6 gap-1.5">
           {extracted.colors.slice(0, 36).map((c, i) => (
@@ -634,42 +631,53 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
   const steps = ["css", "head", "footer", "webflow"];
   const exportPanel = (
     <div className="space-y-4 px-3 pb-4">
-      {isProto && (
-        <div className="flex items-center gap-1.5 text-[11px] text-muted">
+      <div className="flex items-center gap-1.5 text-[11px] text-muted">
           {steps.map((k, i) => <span key={k} className={`flex size-5 items-center justify-center rounded-full ${done.includes(k) ? "bg-emerald-400/20 text-emerald-300" : "bg-raised"}`}>{done.includes(k) ? <Check /> : i + 1}</span>)}
           <span className="ml-1">{done.filter((d) => steps.includes(d)).length}/{steps.length} in Webflow geplakt</span>
         </div>
-      )}
-      <Step n={1} done={isProto && done.includes("css")} title="custom.css" sub="Site settings → Custom code → Head" action={copyBtn("css", exportCss)}><pre className="code max-h-44">{exportCss}</pre></Step>
+      <Step n={1} done={done.includes("css")} title="custom.css" sub="Site settings → Custom code → Head" action={copyBtn("css", exportCss)}><pre className="code max-h-44">{exportCss}</pre></Step>
       {exportAlign && <Step n={1} title="Uitlijning" sub="Onder custom.css plakken (buiten de source-repo)" action={copyBtn("align", exportAlign)}><pre className="code">{exportAlign}</pre></Step>}
-      <Step n={2} done={isProto && done.includes("head")} title="Head-code" sub="Boven GTM" action={copyBtn("head", headCode)}><pre className="code max-h-32">{headCode}</pre></Step>
-      <Step n={3} done={isProto && done.includes("footer")} title="Footer-code" sub={`v${files.version}`} action={copyBtn("footer", footerCode)}><pre className="code">{footerCode}</pre></Step>
-      <Step n={4} done={isProto && done.includes("webflow")} title="Component" sub="Plak met ⌘V in de Webflow Designer">
+      <Step n={2} done={done.includes("head")} title="Head-code" sub="Boven GTM" action={copyBtn("head", headCode)}><pre className="code max-h-32">{headCode}</pre></Step>
+      <Step n={3} done={done.includes("footer")} title="Footer-code" sub={`v${files.version}`} action={copyBtn("footer", footerCode)}><pre className="code">{footerCode}</pre></Step>
+      <Step n={4} done={done.includes("webflow")} title="Component" sub="Plak met ⌘V in de Webflow Designer">
         <button type="button" onClick={copyToWebflow} className="btn btn-primary h-9 w-full">{copied === "webflow" ? <><Check /> Gekopieerd – plak in de Designer</> : "Copy to Webflow"}</button>
       </Step>
-      {isProto && (
-        <Step n={5} title="Testen" sub="Publiceer in Webflow en open de site">
+      <Step n={5} title="Testen" sub="Publiceer in Webflow en open de site">
           <div className="flex gap-2">
             <a href={url || "#"} target="_blank" rel="noreferrer" className="btn flex-1" aria-disabled={!url}>Open site <Arrow /></a>
             <a href="https://tagassistant.google.com" target="_blank" rel="noreferrer" className="btn flex-1">Tag Assistant <Arrow /></a>
           </div>
           <p className="mt-2 text-[11px] leading-relaxed text-muted">Check: banner verschijnt, ‘Weigeren’ zet alles op denied, na keuze geen banner meer. Cookie-instellingen-link in de footer opent hem weer.</p>
         </Step>
-      )}
     </div>
   );
-  // PROTOTYPE: export als menu in de topbar
+  // Export als checklist-menu in de topbar. Klik = kopiëren + afvinken (menu blijft open).
+  const checkItems: [string, string, string, () => void][] = [
+    ["webflow", "Copy to Webflow", "component", copyToWebflow],
+    ["css", "custom.css", "head", () => copy("css", exportCss)],
+    ["head", "Head-code", "boven GTM", () => copy("head", headCode)],
+    ["footer", "Footer-code", "footer", () => copy("footer", footerCode)],
+  ];
+  const doneCount = checkItems.filter(([k]) => done.includes(k)).length;
+  const [row, setRow] = useState<number | null>(null); // glijdende pill in het export-menu
   const exportMenu = (
-    <div id="export-menu" popover="auto" className="menu w-60" style={{ positionArea: "bottom span-left" }}>
-      <button type="button" className="menu-item" popoverTarget="export-menu" popoverTargetAction="hide" onClick={copyToWebflow}><span className="flex-1">Copy to Webflow</span><span className="text-[10px] text-muted">component</span></button>
-      <button type="button" className="menu-item" popoverTarget="export-menu" popoverTargetAction="hide" onClick={() => copy("css", exportCss)}><span className="flex-1">Kopieer custom.css</span></button>
-      <button type="button" className="menu-item" popoverTarget="export-menu" popoverTargetAction="hide" onClick={() => copy("head", headCode)}><span className="flex-1">Kopieer head-code</span></button>
-      <button type="button" className="menu-item" popoverTarget="export-menu" popoverTargetAction="hide" onClick={() => copy("footer", footerCode)}><span className="flex-1">Kopieer footer-code</span></button>
+    <div id="export-menu" popover="auto" className="menu menu-right w-64">
+      <div className="menu-title flex items-center justify-between">Installatie <span className="font-mono normal-case">{doneCount}/{checkItems.length}</span></div>
+      <div className="check-list" onPointerLeave={() => setRow(null)}>
+        <span className="check-pill" aria-hidden style={{ transform: `translateY(${(row ?? 0) * 33}px)`, opacity: row === null ? 0 : 1 }} />
+        {checkItems.map(([k, lbl, hint, act], i) => (
+          <button key={k} type="button" className="menu-item check-item" data-done={done.includes(k)} onClick={act} onPointerEnter={() => setRow(i)}>
+            <span className="check" aria-hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 8.5l3 3 6.5-6.5" /></svg></span>
+            <span className="check-label flex-1">{lbl}</span>
+            <span className="check-hint text-[10px] text-muted">{done.includes(k) ? (copied === k ? "Gekopieerd" : "Klaar") : hint}</span>
+          </button>
+        ))}
+      </div>
       <div className="my-1 h-px bg-line" />
       <button type="button" className="menu-item" popoverTarget="export-menu" popoverTargetAction="hide" onClick={() => window.dispatchEvent(new CustomEvent("consentkit:open", { detail: "installatie" }))}><span className="flex-1">Alle stappen bekijken</span><span className="text-muted">→</span></button>
     </div>
   );
-  // PROTOTYPE: lege staat op het canvas
+  // Lege staat op het canvas
   const emptyState = (
     <div className="mx-auto w-full max-w-lg rounded-2xl bg-panel p-6" style={{ boxShadow: "var(--shadow-pop)" }}>
       <h2 className="text-[15px] font-semibold">Nieuwe cookiebanner</h2>
@@ -699,11 +707,10 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
   );
 
   const parts: Parts = { domain, urlForm, errorLine, previewControls, shareBtn, foundPanel, generalTexts, categoryList, contrastStrip, versions, starters, styleFolders, behaviourPanel, exportPanel, preview, version: files.version,
-    proto: isProto ? { extractStatus, exportMenu, emptyState: !extracted && summary === null ? emptyState : null, artboard: mobile ? "Mobiel · 390 × 720" : "Desktop · 1024 × 640", undo } : undefined };
+    extractStatus, exportMenu, doneCount, doneTotal: checkItems.length, emptyState: !extracted && summary === null ? emptyState : null, artboard: mobile ? "Mobiel · 390 × 720" : "Desktop · 1024 × 640", undo };
   return (
     <>
       <Studio {...parts} />
-      <PrototypeSwitcher current={isProto ? "B" : "A"} />
       {/* Onzichtbare DialRoot: levert alleen de globale shortcut-listener (toets + scroll) voor onze eigen layout */}
       <div hidden><DialRoot mode="inline" productionEnabled /></div>
     </>

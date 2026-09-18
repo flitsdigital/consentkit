@@ -70,7 +70,8 @@ textarea.field { @apply h-auto py-1.5 leading-snug; }
   transition: opacity 150ms var(--ease-out-strong), transform 150ms var(--ease-out-strong), display 150ms allow-discrete, overlay 150ms allow-discrete;
 }
 .menu:popover-open { opacity: 1; transform: none; @starting-style { opacity: 0; transform: scale(0.96); } }
-.menu-item { @apply flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-fg; }
+.menu-item { @apply flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-fg; transition: transform 160ms var(--ease-out-strong), background-color 150ms var(--ease-out-strong); }
+.menu-item:active { transform: scale(0.98); }
 @media (hover: hover) and (pointer: fine) { .menu-item:hover { background: rgba(255, 255, 255, 0.08); } }
 .menu-title { @apply px-2 pt-1 pb-1.5 text-[11px] font-medium tracking-wide text-muted uppercase; }
 
@@ -191,3 +192,83 @@ pre.code { @apply overflow-auto rounded-lg p-3 font-mono text-[11px] leading-rel
 .starter:active { transform: scale(0.97); }
 .starter-preview { @apply relative mb-1.5 block h-20 w-full overflow-hidden rounded-lg; }
 .starter-card { @apply absolute left-1/2 flex -translate-x-1/2 flex-col gap-1 p-2; height: 44px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18); }
+
+/* Checklist-menu (Exporteren). Eén hoofdbeweging: cirkel vult (scale .85→1) en vinkje tekent (dashoffset), samen 240 ms.
+   Kleurwissels zijn ondersteunend en snel. Alles transities → onderbreekbaar. */
+.check { position: relative; display: flex; width: 18px; height: 18px; flex: none; align-items: center; justify-content: center; border-radius: 999px; box-shadow: inset 0 0 0 1.5px oklch(1 0 0 / 0.25); color: #fff; transition: box-shadow 120ms var(--ease-out-strong), transform 120ms var(--ease-out-strong); }
+.check::before { content: ""; position: absolute; inset: 0; border-radius: 999px; background: var(--color-accent); opacity: 0; transform: scale(0.85); transition: opacity 150ms var(--ease-out-strong), transform 180ms var(--ease-out-strong); }
+.check svg { position: relative; width: 11px; height: 11px; }
+.check svg path { stroke-dasharray: 20; stroke-dashoffset: 20; transition: stroke-dashoffset 180ms var(--ease-out-strong); }
+.check-item[data-done="true"] .check { box-shadow: inset 0 0 0 1.5px transparent; }
+.check-item[data-done="true"] .check::before { opacity: 1; transform: scale(1); }
+.check-item[data-done="true"] .check svg path { stroke-dashoffset: 0; transition-delay: 60ms; }
+.check-item:active[data-done="true"] .check { transform: scale(1.08); } /* tweede klik kopieert opnieuw: korte tik */
+.check-label, .check-hint { transition: color 120ms var(--ease-out-strong); }
+.check-item[data-done="true"] .check-label { color: var(--color-muted); }
+.check-item[data-done="true"] .check-hint { color: var(--color-accent); }
+/* Exporteren-knop: teller → vinkje als alles geplakt is; kleur glijdt, tekst wisselt hard */
+.btn[data-done="true"] { background: oklch(0.8 0.17 155); color: #0b1a10; }
+.btn-primary { transition-property: transform, background-color, color, box-shadow; transition-duration: 160ms, 200ms, 200ms, 160ms; }
+.export-progress { @apply ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 font-mono text-[10px]; background: oklch(0 0 0 / 0.12); }
+.menu-right { position-area: bottom span-left; transform-origin: top right; }
+@media (prefers-reduced-motion: reduce) { .check::before { transform: none; } .check svg path, .check { transition-duration: 0ms; } }
+
+/* GlideSelect (React Bits) — in onze tokens: surface = raised, highlight = pill, accent = vinkje */
+.glide-select {
+  --gs-accent: var(--color-fg); --gs-surface: #262626; --gs-highlight: #3a3a3a; --gs-text: var(--color-fg);
+  --gs-radius: 10px; --gs-inner-radius: 6px; --gs-chip: 32px; --gs-row: 30px; --gs-font: 13px; --gs-menu-w: 176px;
+  --gs-pop: 180ms; --gs-pop-out: 120ms; --gs-glide: 220ms; --gs-origin: top left; --gs-ease-out: var(--ease-out-strong);
+  position: relative; display: inline-block;
+}
+.glide-select[data-disabled] { opacity: 0.5; }
+.glide-select__trigger {
+  position: relative; display: inline-flex; align-items: center; gap: 6px; height: var(--gs-chip); margin: 0; padding: 0 8px 0 10px; border: 0;
+  border-radius: var(--gs-inner-radius); background: var(--gs-surface); color: var(--gs-text); font-family: inherit; font-size: var(--gs-font); font-weight: 500; line-height: 1;
+  cursor: pointer; outline: none; user-select: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  transition: background-color 100ms ease, transform 160ms var(--gs-ease-out);
+}
+.glide-select__trigger:focus-visible { outline: 2px solid oklch(1 0 0 / 0.6); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .glide-select__trigger:not(:disabled):hover { background: color-mix(in srgb, var(--gs-highlight) 60%, var(--gs-surface)); } }
+.glide-select__trigger[aria-expanded="true"] { background: color-mix(in srgb, var(--gs-highlight) 60%, var(--gs-surface)); }
+.glide-select__trigger:not(:disabled):active { transform: scale(0.97); }
+.glide-select__label[data-empty] { opacity: 0.6; }
+.glide-select[data-swap] .glide-select__label { animation: gs-swap 160ms ease; }
+@keyframes gs-swap { from { opacity: 0.6; filter: blur(2px); } }
+.glide-select__chevron { display: inline-flex; color: color-mix(in srgb, var(--gs-text) 55%, transparent); transition: transform 200ms var(--gs-ease-out); }
+.glide-select__trigger[aria-expanded="true"] .glide-select__chevron { transform: rotate(180deg); }
+.glide-select__menu {
+  position: absolute; z-index: 20; width: var(--gs-menu-w); min-width: 100%; padding: 4px; border-radius: var(--gs-radius); background: var(--gs-surface);
+  box-shadow: var(--shadow-pop); transform-origin: var(--gs-origin); opacity: 0; transform: scale(0.95);
+  transition: opacity var(--gs-pop) var(--gs-ease-out), transform var(--gs-pop) var(--gs-ease-out);
+}
+.glide-select__menu[data-state="open"] { opacity: 1; transform: none; }
+.glide-select__menu[data-state="closed"] { transition-duration: var(--gs-pop-out); pointer-events: none; }
+.glide-select__menu[data-side="bottom"] { top: calc(100% + 6px); }
+.glide-select__menu[data-side="top"] { bottom: calc(100% + 6px); }
+.glide-select__menu[data-align="left"] { left: 0; }
+.glide-select__menu[data-align="right"] { right: 0; }
+.glide-select__list { position: relative; display: grid; gap: 1px; touch-action: none; }
+.glide-select__pill { position: absolute; top: 0; right: 0; left: 0; height: var(--gs-row); border-radius: var(--gs-inner-radius); background: var(--gs-highlight); opacity: 0; pointer-events: none; transition: transform var(--gs-glide) var(--gs-ease-out), opacity 150ms ease; }
+.glide-select__option { position: relative; z-index: 1; display: flex; align-items: center; gap: 8px; height: var(--gs-row); padding: 0 8px 0 10px; border-radius: var(--gs-inner-radius); color: var(--gs-text); font-size: var(--gs-font); cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; transition: background-color 150ms ease; }
+.glide-select__option[aria-selected="true"] { background: color-mix(in srgb, var(--gs-highlight) 60%, transparent); }
+.glide-select__list[data-live] .glide-select__option[aria-selected="true"] { background: transparent; }
+.glide-select__name { flex: 1 1 auto; min-width: 0; overflow: hidden; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
+.glide-select__tag { flex-shrink: 0; color: color-mix(in srgb, var(--gs-text) 55%, transparent); font-size: calc(var(--gs-font) - 2px); }
+.glide-select__check { display: inline-flex; flex-shrink: 0; color: var(--gs-accent); visibility: hidden; }
+.glide-select__check[data-on] { visibility: visible; }
+@media (prefers-reduced-motion: reduce) {
+  .glide-select__menu { transform: none !important; transition: opacity var(--gs-pop) ease; }
+  .glide-select__pill { transition: opacity 150ms ease; }
+  .glide-select__chevron, .glide-select__trigger { transition: none; }
+  .glide-select__trigger:not(:disabled):active { transform: none; }
+  .glide-select[data-swap] .glide-select__label { animation: none; }
+}
+/* DialKit-rij met een GlideSelect rechts */
+.gs-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: var(--dial-row-height); padding: 0 6px 0 12px; background: var(--dial-surface); border-radius: var(--dial-radius); font-size: 13px; font-weight: 500; color: var(--dial-text-label); }
+
+/* Export-checklist: glijdende pill achter de rijen (zelfde techniek als GlideSelect) */
+.check-list { position: relative; display: grid; gap: 1px; }
+.check-list > .menu-item { position: relative; z-index: 1; }
+@media (hover: hover) and (pointer: fine) { .check-list > .menu-item:hover { background: transparent; } }
+.check-pill { position: absolute; top: 0; right: 0; left: 0; height: 32px; border-radius: 8px; background: rgba(255, 255, 255, 0.08); opacity: 0; pointer-events: none; transition: transform 220ms var(--ease-out-strong), opacity 150ms ease; }
+@media (prefers-reduced-motion: reduce) { .check-pill { transition: opacity 150ms ease; } }
