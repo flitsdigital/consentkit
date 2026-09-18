@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ButtonGroup, ColorControl, Folder, Slider, TextControl, useDialKitController, type DialConfig } from "dialkit";
 import { parse } from "culori";
-import { FocusLayout, InspectorLayout, PrototypeSwitcher, RailInspectorLayout, SidebarLayout, StepsLayout, StudioLayout, type Parts } from "./prototype-layouts";
+import { FocusLayout, InspectorLayout, PrototypeSwitcher, RailInspectorLayout, SidebarLayout, StepsLayout, StudioLayout, StudioV2Layout, type Parts } from "./prototype-layouts";
 import { AUTO_VARS, COLOR_VARS, DEFAULTS, VAR_NAMES, contrast, deriveAuto, hex, keyFromUrl, mapToVars, renderCustomCss, toPx, type Extracted, type VarName, type Vars } from "@/lib/mapping";
 
 type Files = { customCss: string; classesCss: string; componentHtml: string; clipboardJson: string; headSnippet: string; version: string };
@@ -516,14 +516,14 @@ document.addEventListener("click", function (e) {
       title="Preview"
       srcDoc={srcdoc}
       data-testid="preview"
-      className="block rounded-xl bg-white shadow-[0_0_0_1px_oklch(1_0_0_/_0.1),0_24px_64px_oklch(0_0_0_/_0.5)] transition-[width,height] duration-200 ease-out-strong"
+      className="block rounded-xl bg-white shadow-[0_0_0_1px_oklch(1_0_0_/_0.1),0_24px_64px_oklch(0_0_0_/_0.5)]"
       style={{ width: mobile ? 390 : "min(1024px, 100%)", height: mobile ? 720 : 640, maxWidth: "100%" }}
     />
   );
 
   const parts: Parts = { domain, urlForm, errorLine, previewControls, shareBtn, foundPanel, generalTexts, categoryList, textsPanel, contrastStrip, styleFolders, stylePanel, behaviourPanel, exportPanel, preview, version: files.version, hasSite: !!extracted };
-  const variant = params.get("variant") ?? "D";
-  const Layout = { A: StudioLayout, B: InspectorLayout, C: FocusLayout, D: RailInspectorLayout, E: SidebarLayout, F: StepsLayout }[variant] ?? RailInspectorLayout;
+  const variant = params.get("variant") ?? "G";
+  const Layout = { A: StudioLayout, B: InspectorLayout, C: FocusLayout, D: RailInspectorLayout, E: SidebarLayout, F: StepsLayout, G: StudioV2Layout }[variant] ?? StudioV2Layout;
   return (
     <>
       <Layout {...parts} />

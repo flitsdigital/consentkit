@@ -3,7 +3,7 @@
 // Vraag: welke indeling voelt rustiger dan de huidige drie-koloms layout? (tabs Banner/Gedrag/Stijl/Installatie, icoon-rail, canvas, onderbalk)
 // Winnaar wordt de echte layout; de rest gaat weg. Zie mattpocock-skills:prototype.
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Folder } from "dialkit";
 
@@ -302,8 +302,80 @@ export function StepsLayout(p: Parts) {
   );
 }
 
+
+/* ---------- G — Studio v2: A + feedback. Tabs boven met glijdende streep; vaste rail (alle secties, gegroepeerd, icoon + label);
+   zwevend paneel met transitie i.p.v. keyframes; inhoud wisselt met 120 ms opacity; iframe-formaat instant; Escape sluit. ---------- */
+function SlidingTabs({ tab, onTab }: { tab: Tab; onTab: (t: Tab) => void }) {
+  const nav = useRef<HTMLElement>(null);
+  const ink = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const el = nav.current?.querySelector<HTMLElement>(`[data-tab="${tab}"]`);
+    if (!el || !ink.current) return;
+    ink.current.style.transform = `translateX(${el.offsetLeft + 10}px) scaleX(${(el.offsetWidth - 20) / 100})`;
+  }, [tab]);
+  return (
+    <nav ref={nav} className="relative flex items-center gap-1" aria-label="Onderdelen">
+      {TABS.map(([id, name]) => (
+        <button key={id} type="button" data-tab={id} aria-current={tab === id} onClick={() => onTab(id)} className="tab tab-v2">{name}</button>
+      ))}
+      <span ref={ink} className="tab-ink" aria-hidden />
+    </nav>
+  );
+}
+export function StudioV2Layout(p: Parts) {
+  const [open, setOpen] = useState<string | null>("stijl.site");
+  const active = ALL_SECTIONS.find((s) => s.key === open);
+  const [tab, setTab] = useState<Tab>("stijl");
+  const pickTab = (t: Tab) => { setTab(t); setOpen(`${t}.${SECTIONS[t][0].id}`); };
+  const pickSection = (s: (typeof ALL_SECTIONS)[number]) => { setTab(s.tab); setOpen(open === s.key ? null : s.key); };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !(e.target as HTMLElement).closest("[popover]:popover-open")) setOpen(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  return (
+    <div className="grid h-full grid-rows-[48px_1fr_48px]">
+      <header className="grid grid-cols-[1fr_auto_1fr] items-center border-b border-line px-4">
+        <Logo domain={p.domain} />
+        <SlidingTabs tab={tab} onTab={pickTab} />
+        <div className="flex items-center justify-end gap-2">{p.shareBtn}<button type="button" className="btn btn-primary ps-3 pe-2.5" onClick={() => pickTab("installatie")}>Exporteren <Arrow /></button></div>
+      </header>
+      <div className="relative min-h-0">
+        <main className="canvas absolute inset-0 flex items-center justify-center overflow-auto p-8 pl-28">
+          <div className="w-full max-w-5xl">{p.preview}</div>
+        </main>
+        {/* Vaste rail: alle secties, gegroepeerd per tab */}
+        <nav className="absolute top-4 left-4 flex w-[68px] flex-col items-stretch gap-0.5 rounded-xl bg-panel p-1.5" style={{ boxShadow: "var(--shadow-pop)" }} aria-label="Secties">
+          {TABS.map(([t], gi) => (
+            <div key={t} className="flex flex-col gap-0.5">
+              {gi > 0 && <span className="mx-2 my-1 h-px bg-line" />}
+              {SECTIONS[t].map((s) => (
+                <button key={s.id} type="button" aria-pressed={open === `${t}.${s.id}`} aria-label={s.label} onClick={() => pickSection({ ...s, tab: t, tabName: "", key: `${t}.${s.id}` })} className="rail-btn rail-btn-v2">{s.icon}<span>{s.label}</span></button>
+              ))}
+            </div>
+          ))}
+        </nav>
+        {/* Zwevend paneel: transitie + @starting-style; inhoud wisselt met key → 120 ms opacity */}
+        {active && (
+          <aside className="float-panel-v2 absolute top-4 bottom-4 left-[92px] flex w-[336px] flex-col rounded-xl bg-panel" style={{ boxShadow: "var(--shadow-pop)" }}>
+            <div className="flex h-11 shrink-0 items-center justify-between border-b border-line px-3">
+              <span className="text-[13px]"><span className="text-muted">{active.tabName} / </span><span className="font-medium">{active.label}</span></span>
+              <button type="button" className="btn btn-ghost h-7 w-7 px-0" aria-label="Sluiten (Esc)" title="Sluiten (Esc)" onClick={() => setOpen(null)}>✕</button>
+            </div>
+            <div key={active.key} className="panel-body min-h-0 flex-1 overflow-y-auto pt-2">{active.render(p)}</div>
+          </aside>
+        )}
+      </div>
+      <footer className="flex items-center justify-between border-t border-line px-4">
+        <div className="flex items-center gap-2">{p.previewControls}</div>
+        <span className="font-mono text-[11px] text-muted">consent.min.js v{p.version}</span>
+      </footer>
+    </div>
+  );
+}
+
 /* ---------- Switcher (alleen dev) ---------- */
-const VARIANTS: [string, string][] = [["A", "Studio: rail + zwevend paneel"], ["B", "Inspector: één rechterpaneel"], ["C", "Focus: canvas + palette"], ["D", "Rail + inspector"], ["E", "Sidebar + inspector"], ["F", "Stappen"]];
+const VARIANTS: [string, string][] = [["A", "Studio: rail + zwevend paneel"], ["B", "Inspector: één rechterpaneel"], ["C", "Focus: canvas + palette"], ["D", "Rail + inspector"], ["E", "Sidebar + inspector"], ["F", "Stappen"], ["G", "Studio v2 (A + feedback)"]];
 export function PrototypeSwitcher({ current }: { current: string }) {
   const router = useRouter();
   const i = Math.max(0, VARIANTS.findIndex(([k]) => k === current));
@@ -315,7 +387,7 @@ export function PrototypeSwitcher({ current }: { current: string }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (t.closest("input, textarea, [contenteditable]")) return;
+      if (!e.altKey || t.closest("input, textarea, [contenteditable]")) return;
       if (e.key === "ArrowLeft") go(-1);
       if (e.key === "ArrowRight") go(1);
     };
@@ -325,7 +397,7 @@ export function PrototypeSwitcher({ current }: { current: string }) {
   if (process.env.NODE_ENV === "production") return null;
   return (
     <div className="fixed bottom-16 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full bg-accent px-2 py-1 text-[12px] font-medium text-white shadow-lg">
-      <button type="button" onClick={() => go(-1)} className="px-1" aria-label="Vorige variant">←</button>
+      <button type="button" onClick={() => go(-1)} className="px-1" aria-label="Vorige variant (Alt+←)">←</button>
       <span>PROTOTYPE {VARIANTS[i][0]} — {VARIANTS[i][1]}</span>
       <button type="button" onClick={() => go(1)} className="px-1" aria-label="Volgende variant">→</button>
     </div>

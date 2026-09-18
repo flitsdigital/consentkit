@@ -42,9 +42,8 @@
 .seg { @apply inline-flex h-8 items-center gap-0.5 rounded-lg p-0.5; background: rgba(255, 255, 255, 0.06); }
 .seg > button {
   @apply h-7 rounded-md px-2.5 text-[13px] font-medium text-muted;
-  transition-property: transform, background-color, color;
-  transition-duration: 150ms;
-  transition-timing-function: var(--ease-out-strong);
+  /* kleur instant (crossfade toont twee staten tegelijk); alleen drukfeedback animeert */
+  transition: transform 150ms var(--ease-out-strong);
 }
 .seg > button:active { transform: scale(0.97); }
 .seg > button[aria-pressed="true"] { background: var(--color-raised); color: var(--color-fg); box-shadow: var(--shadow-ring); }
@@ -174,3 +173,25 @@ pre.code { @apply overflow-auto rounded-lg p-3 font-mono text-[11px] leading-rel
 .step-n { @apply flex size-5 items-center justify-center rounded-full font-mono text-[10px]; background: var(--color-raised); box-shadow: var(--shadow-ring); }
 .step[aria-current="step"] { color: var(--color-fg); }
 .step[aria-current="step"] .step-n { background: var(--color-accent); color: #fff; box-shadow: none; }
+
+/* G — Studio v2 */
+.tab-v2[aria-current="true"]::after { content: none; }
+.tab-ink {
+  position: absolute; left: 0; bottom: -9px; height: 2px; width: 100px; border-radius: 1px;
+  background: var(--color-accent); transform-origin: left center;
+  transition: transform 200ms var(--ease-out-strong);
+}
+.rail-btn-v2 { @apply h-auto w-full flex-col gap-1 py-1.5 text-[10px] leading-none; }
+.rail-btn-v2 > span { line-height: 1; }
+.float-panel-v2 {
+  transition: opacity 180ms var(--ease-out-strong), transform 180ms var(--ease-out-strong);
+  @starting-style { opacity: 0; transform: translateY(6px) scale(0.98); }
+}
+.panel-body { transition: opacity 120ms var(--ease-out-strong); @starting-style { opacity: 0; } }
+.btn:focus-visible, .seg > button:focus-visible, .tab:focus-visible, .rail-btn:focus-visible, .nav-item:focus-visible, .step:focus-visible, .var-btn:focus-visible, .drag-handle:focus-visible, .menu-item:focus-visible {
+  outline: 2px solid oklch(1 0 0 / 0.6); outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab-ink, .float-panel-v2 { transition-duration: 0ms; }
+  .float-panel-v2 { @starting-style { transform: none; } }
+}
