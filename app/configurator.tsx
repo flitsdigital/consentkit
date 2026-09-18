@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
-import { ButtonGroup, ColorControl, DialRoot, DialStore, Folder, PresetManager, Slider, TextControl, TransitionControl, useDialKitController, type DialConfig, type EasingConfig, type Preset } from "dialkit";
+import { ButtonGroup, ColorControl, DialRoot, DialStore, Folder, PresetManager, Slider, TextControl, TransitionControl, useDialKitController, type DialConfig, type EasingConfig, type Preset, type ShortcutConfig } from "dialkit";
 import { formatRgb, parse } from "culori";
 import { Studio, type Parts } from "./studio";
 import { AUTO_VARS, COLOR_VARS, DEFAULTS, VAR_NAMES, contrast, deriveAuto, hex, keyFromUrl, mapToVars, renderCustomCss, toPx, type Extracted, type VarName, type Vars } from "@/lib/mapping";
@@ -20,7 +20,7 @@ const CONTRAST_PAIRS: [VarName, VarName, string][] = [["--cb-color-accent-text",
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 // DialKit-pad ↔ --cb-variabele. Sliders in px; kleuren als hex; schaduw/easing als tekst.
-const DIAL: Record<string, { v: VarName; range?: [number, number, number?]; text?: true }> = {
+const DIAL: Record<string, { v: VarName; range?: [number, number, number?] }> = {
   "kleuren.tekst": { v: "--cb-color" },
   "kleuren.achtergrond": { v: "--cb-color-background" },
   "kleuren.oppervlak": { v: "--cb-color-surface" },
@@ -45,23 +45,25 @@ const DIAL: Record<string, { v: VarName; range?: [number, number, number?]; text
 type Shadow = { x: number; y: number; blur: number; opacity: number };
 const parseShadow = (v: string): Shadow => { const m = v.match(/(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px\s+rgba?\([^)]*?([\d.]+)\)/); return m ? { x: +m[1], y: +m[2], blur: +m[3], opacity: +m[4] } : { x: 0, y: 12, blur: 40, opacity: 0.18 }; };
 const parseEase = (v: string): EasingConfig => { const m = v.match(/cubic-bezier\(([^)]+)\)/); const e = m?.[1].split(",").map(Number); return { type: "easing", duration: 0.25, ease: e?.length === 4 ? (e as EasingConfig["ease"]) : [0.32, 0.72, 0, 1] }; };
-const shadowCss = (sh: Shadow, color: string) => `${sh.x} ${sh.y}px ${sh.blur}px ${formatRgb({ ...parse(color)!, alpha: sh.opacity })}`.replace(/^0 /, "0 ");
+const shadowCss = (sh: Shadow, color: string) => `${sh.x}px ${sh.y}px ${sh.blur}px ${formatRgb({ ...parse(color)!, alpha: sh.opacity })}`;
 const easeCss = (e: EasingConfig) => `cubic-bezier(${e.ease.join(", ")})`;
-const effectConfig = (vars: Vars): DialConfig => { const sh = parseShadow(vars["--cb-shadow"]); return { schaduwX: [sh.x, -40, 40], schaduwY: [sh.y, -40, 60], schaduwBlur: [sh.blur, 0, 120], schaduwOpacity: [sh.opacity, 0, 1, 0.01], easing: parseEase(vars["--cb-ease"]), replay: { type: "action", label: "Speel switch-animatie af" } }; };
+const SHADOW: Record<keyof Shadow, { label: string; range: [number, number, number?]; unit: string }> = { x: { label: "Schaduw x", range: [-40, 40], unit: "px" }, y: { label: "Schaduw y", range: [-40, 60], unit: "px" }, blur: { label: "Schaduw blur", range: [0, 120], unit: "px" }, opacity: { label: "Schaduw opacity", range: [0, 1, 0.01], unit: "" } };
+const effectConfig = (vars: Vars): DialConfig => { const sh = parseShadow(vars["--cb-shadow"]); return { ...Object.fromEntries(Object.entries(SHADOW).map(([k, d]) => [k, [sh[k as keyof Shadow], ...d.range]])), easing: parseEase(vars["--cb-ease"]), replay: { type: "action", label: "Speel switch-animatie af" } }; };
+type Fx = Shadow & { easing?: EasingConfig };
 // Toets vasthouden + scrollen/slepen tunet de slider zonder naar het paneel te kijken
 const NO_PRESETS: Preset[] = [];
-const SHORTCUTS = { "maten.padding": { key: "p" }, "maten.offset": { key: "o" }, "maten.kaartRadius": { key: "r" }, "maten.knopRadius": { key: "k" }, "typografie.tekst": { key: "t" }, "effect.schaduwBlur": { key: "b" } } as const;
+const SHORTCUTS: Record<string, ShortcutConfig> = { "maten.padding": { key: "p" }, "maten.offset": { key: "o" }, "maten.kaartRadius": { key: "r" }, "maten.knopRadius": { key: "k" }, "typografie.tekst": { key: "t" }, "effect.blur": { key: "b" } };
 type DialValues = Record<string, Record<string, string | number>>;
 
 const num = (d: (typeof DIAL)[string], v: string) => (d.v === "--cb-z-index" ? Number(v) : toPx(v) ?? toPx(DEFAULTS[d.v])!);
-const dialValue = (d: (typeof DIAL)[string], v: string) => (d.text ? v : d.range ? num(d, v) : hex(v));
+const dialValue = (d: (typeof DIAL)[string], v: string) => (d.range ? num(d, v) : hex(v));
 // Zelfde vorm als de DialKit-config: { folder: { key: value } }
 const toDial = (vars: Vars, config = false) => {
   const out: Record<string, Record<string, unknown>> = {};
   for (const [path, d] of Object.entries(DIAL)) {
     const [folder, k] = path.split(".");
     const v = dialValue(d, vars[d.v]);
-    (out[folder] ??= {})[k] = !config ? v : d.text ? { type: "text", default: v } : d.range ? [v, ...d.range] : v;
+    (out[folder] ??= {})[k] = config && d.range ? [v, ...d.range] : v;
   }
   return out;
 };
@@ -74,9 +76,9 @@ const toVars = (values: DialValues): Vars => {
     if (val === undefined) continue;
     vars[d.v] = typeof val === "number" ? (d.v === "--cb-z-index" ? String(val) : `${val}px`) : val;
   }
-  const fx = values.effect as unknown as { schaduwX: number; schaduwY: number; schaduwBlur: number; schaduwOpacity: number; easing: EasingConfig } | undefined;
+  const fx = values.effect as unknown as Fx | undefined;
   if (fx?.easing?.ease) {
-    vars["--cb-shadow"] = shadowCss({ x: fx.schaduwX, y: fx.schaduwY, blur: fx.schaduwBlur, opacity: fx.schaduwOpacity }, vars["--cb-color"]);
+    vars["--cb-shadow"] = shadowCss(fx, vars["--cb-color"]);
     vars["--cb-ease"] = easeCss(fx.easing);
   }
   return vars;
@@ -85,6 +87,7 @@ const PATH_OF = Object.fromEntries(Object.entries(DIAL).map(([p, d]) => [d.v, p]
 const COLOR_TARGETS = Object.entries(DIAL).filter(([, d]) => COLOR_VARS.includes(d.v)).map(([p]) => ({ path: p, label: p.split(".")[1] }));
 const RADIUS_TARGETS = [{ path: "maten.kaartRadius", label: "Kaart" }, { path: "maten.knopRadius", label: "Knop" }];
 const FONT_TARGETS = [{ path: "typografie.tekst", label: "Tekst" }, { path: "typografie.klein", label: "Klein" }, { path: "typografie.titel", label: "Titel" }];
+const shortName = (name: string) => name.replace(/^--_?/, "").replace(/\\.*$/, "");
 const label = (k: string) => k.replace(/([A-Z])/g, " $1").toLowerCase().replace(/^./, (c) => c.toUpperCase());
 
 export function Configurator({ files }: { files: Files }) {
@@ -143,7 +146,7 @@ export function Configurator({ files }: { files: Files }) {
 
   const [config] = useState(() => dialConfig(Object.fromEntries(VAR_NAMES.map((n) => { const p = params.get(n.slice(2)); return [n, p && !p.startsWith("var(") ? p : DEFAULTS[n]]; })) as Vars));
   const frame = useRef<HTMLIFrameElement>(null);
-  const replay = () => { setPrefsOpen(true); setTimeout(() => frame.current?.contentWindow?.postMessage({ cb: "replay" }, "*"), prefsOpen ? 0 : 400); };
+  const replay = () => { setPrefsOpen(true); setTimeout(() => frame.current?.contentWindow?.postMessage({ cb: "replay" }, "*"), 400); }; // na eventuele iframe-reload
   const dial = useDialKitController("Banner", config, { id: "banner", shortcuts: SHORTCUTS, onAction: (p) => p === "effect.replay" && replay() });
   // Versies (DialKit-presets): A/B voor de klant. In-memory voor deze sessie.
   const presets = useSyncExternalStore((cb) => DialStore.subscribe("banner", cb), () => DialStore.getPresets("banner"), () => NO_PRESETS);
@@ -296,7 +299,6 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
       ))}
     </div>
   );
-  const shortName = (name: string) => name.replace(/^--_?/, "").replace(/\\.*$/, "");
   const [varQuery, setVarQuery] = useState("");
   // Kleurrij: DialKit ColorControl + variabelen-picker (Figma-stijl). Gekoppeld → chip met naam i.p.v. hex.
   const auto = deriveAuto(resolved);
@@ -351,15 +353,12 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
       </div>
     );
   };
-  const sliderFor = (path: string, range: readonly [number, number, number?], unit = "px", lbl?: string) => { const [f, k] = path.split("."); return <Slider key={path} label={lbl ?? label(k)} value={Number(values[f]?.[k] ?? 0)} onChange={(v) => dial.setValue(path, v)} min={range[0]} max={range[1]} step={range[2] ?? 1} unit={unit} shortcut={(SHORTCUTS as Record<string, { key: string }>)[path]} />; };
+  const sliderFor = (path: string, range: readonly [number, number, number?], unit = "px", lbl?: string) => { const [f, k] = path.split("."); return <Slider key={path} label={lbl ?? label(k)} value={Number(values[f]?.[k] ?? 0)} onChange={(v) => dial.setValue(path, v)} min={range[0]} max={range[1]} step={range[2] ?? 1} unit={unit} shortcut={SHORTCUTS[path]} />; };
   const slider = (path: string) => { const d = DIAL[path]; return sliderFor(path, d.range!, d.v === "--cb-z-index" ? "" : "px"); };
-  const fx = values.effect as unknown as { easing: EasingConfig } | undefined;
+  const fx = values.effect as unknown as Fx | undefined;
   const effectPanel = (
     <div className="flex flex-col gap-1.5">
-      {sliderFor("effect.schaduwX", [-40, 40], "px", "Schaduw x")}
-      {sliderFor("effect.schaduwY", [-40, 60], "px", "Schaduw y")}
-      {sliderFor("effect.schaduwBlur", [0, 120], "px", "Schaduw blur")}
-      {sliderFor("effect.schaduwOpacity", [0, 1, 0.01], "", "Schaduw opacity")}
+      {Object.entries(SHADOW).map(([k, d]) => sliderFor(`effect.${k}`, d.range, d.unit, d.label))}
       {fx?.easing?.ease && <TransitionControl panelId="banner" path="effect.easing" label="Switch-easing" value={fx.easing} onChange={(v) => dial.setValue("effect.easing", v as unknown as string)} hideDuration />}
       <ButtonGroup buttons={[{ label: "Speel switch-animatie af", onClick: replay }]} />
     </div>

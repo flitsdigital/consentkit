@@ -113,7 +113,7 @@ textarea.field { @apply h-auto py-1.5 leading-snug; }
 .texts .dialkit-text-label { position: absolute; top: 9px; left: 12px; font-size: 11px; color: var(--dial-text-tertiary); }
 .texts .dialkit-text-input { text-align: left; width: 100%; color: var(--dial-text-primary); caret-color: var(--color-accent); }
 /* Focus: ring om de hele rij i.p.v. DialKit's onderlijn (die hoort bij het rij-layout) */
-.texts .dialkit-text-control { transition: box-shadow 150ms var(--ease-out-strong), background-color 150ms var(--ease-out-strong), height 180ms cubic-bezier(0.2, 0, 0, 1); }
+.texts .dialkit-text-control { transition: box-shadow 150ms var(--ease-out-strong), background-color 150ms var(--ease-out-strong); }
 .texts .dialkit-text-control:focus-within { box-shadow: 0 0 0 1px oklch(1 0 0 / 0.35); background: var(--dial-surface-hover); }
 .texts .dialkit-text-control:focus-within .dialkit-text-label { color: var(--dial-text-label); }
 .texts .dialkit-text-input:focus-visible { background-image: none; }
@@ -181,3 +181,7 @@ pre.code { @apply overflow-auto rounded-lg p-3 font-mono text-[11px] leading-rel
 .btn:focus-visible, .seg > button:focus-visible, .tab:focus-visible, .rail-btn:focus-visible, .var-btn:focus-visible, .drag-handle:focus-visible, .menu-item:focus-visible {
   outline: 2px solid oklch(1 0 0 / 0.6); outline-offset: 2px;
 }
+
+/* Hue-slider altijd verzadigd tonen (DialKit tekent hem in de lightness/chroma van de huidige kleur → bij donkere kleuren onleesbaar) */
+.dialkit-color-hue::-webkit-slider-runnable-track { background: linear-gradient(to right in oklch longer hue, oklch(0.72 0.19 0), oklch(0.72 0.19 360)); }
+.dialkit-color-hue::-moz-range-track { background: linear-gradient(to right in oklch longer hue, oklch(0.72 0.19 0), oklch(0.72 0.19 360)); }

@@ -23,8 +23,9 @@ export type Parts = {
   version: string;
 };
 
-type Tab = "banner" | "gedrag" | "stijl" | "installatie";
-const TABS: [Tab, string][] = [["banner", "Banner"], ["gedrag", "Gedrag"], ["stijl", "Stijl"], ["installatie", "Installatie"]];
+const TABS = { banner: "Banner", gedrag: "Gedrag", stijl: "Stijl", installatie: "Installatie" } as const;
+type Tab = keyof typeof TABS;
+const TAB_IDS = Object.keys(TABS) as Tab[];
 
 /* ---------- Iconen ---------- */
 const svg = (d: ReactNode) => <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{d}</svg>;
@@ -58,11 +59,7 @@ const SECTIONS: Record<Tab, Section[]> = {
   installatie: [{ id: "code", label: "Code", icon: <I.Code />, render: (p) => p.exportPanel }],
 };
 
-const Logo = ({ domain }: { domain: string }) => (
-  <div className="flex items-center gap-2 text-[13px]"><Cookie /><span className="font-semibold tracking-tight">consentkit</span><span className="text-muted">/</span><span className="truncate text-muted">{domain}</span></div>
-);
-
-const ALL_SECTIONS = TABS.flatMap(([t, name]) => SECTIONS[t].map((s) => ({ ...s, tab: t, tabName: name, key: `${t}.${s.id}` })));
+const ALL_SECTIONS = TAB_IDS.flatMap((t) => SECTIONS[t].map((s) => ({ ...s, tab: t, key: `${t}.${s.id}` })));
 
 /* Tabs met glijdende streep; vaste rail (alle secties, gegroepeerd, icoon + label);
    zwevend paneel met transitie + @starting-style; inhoud wisselt met 120 ms opacity; Escape sluit. */
@@ -76,8 +73,8 @@ function SlidingTabs({ tab, onTab }: { tab: Tab; onTab: (t: Tab) => void }) {
   }, [tab]);
   return (
     <nav ref={nav} className="relative flex items-center gap-1" aria-label="Onderdelen">
-      {TABS.map(([id, name]) => (
-        <button key={id} type="button" data-tab={id} aria-current={tab === id} onClick={() => onTab(id)} className="tab">{name}</button>
+      {TAB_IDS.map((id) => (
+        <button key={id} type="button" data-tab={id} aria-current={tab === id} onClick={() => onTab(id)} className="tab">{TABS[id]}</button>
       ))}
       <span ref={ink} className="tab-ink" aria-hidden />
     </nav>
@@ -88,7 +85,7 @@ export function Studio(p: Parts) {
   const active = ALL_SECTIONS.find((s) => s.key === open);
   const [tab, setTab] = useState<Tab>("stijl");
   const pickTab = (t: Tab) => { setTab(t); setOpen(`${t}.${SECTIONS[t][0].id}`); };
-  const pickSection = (s: (typeof ALL_SECTIONS)[number]) => { setTab(s.tab); setOpen(open === s.key ? null : s.key); };
+  const pickSection = (t: Tab, key: string) => { setTab(t); setOpen(open === key ? null : key); };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !(e.target as HTMLElement).closest("[popover]:popover-open")) setOpen(null); };
     window.addEventListener("keydown", onKey);
@@ -97,7 +94,7 @@ export function Studio(p: Parts) {
   return (
     <div className="grid h-full grid-rows-[48px_1fr_48px]">
       <header className="grid grid-cols-[1fr_auto_1fr] items-center border-b border-line px-4">
-        <Logo domain={p.domain} />
+        <div className="flex items-center gap-2 text-[13px]"><Cookie /><span className="font-semibold tracking-tight">consentkit</span><span className="text-muted">/</span><span className="truncate text-muted">{p.domain}</span></div>
         <SlidingTabs tab={tab} onTab={pickTab} />
         <div className="flex items-center justify-end gap-2">{p.shareBtn}<button type="button" className="btn btn-primary ps-3 pe-2.5" onClick={() => pickTab("installatie")}>Exporteren <Arrow /></button></div>
       </header>
@@ -107,11 +104,11 @@ export function Studio(p: Parts) {
         </main>
         {/* Vaste rail: alle secties, gegroepeerd per tab */}
         <nav className="absolute top-4 left-4 flex w-[68px] flex-col items-stretch gap-0.5 rounded-xl bg-panel p-1.5" style={{ boxShadow: "var(--shadow-pop)" }} aria-label="Secties">
-          {TABS.map(([t], gi) => (
+          {TAB_IDS.map((t, gi) => (
             <div key={t} className="flex flex-col gap-0.5">
               {gi > 0 && <span className="mx-2 my-1 h-px bg-line" />}
               {SECTIONS[t].map((s) => (
-                <button key={s.id} type="button" aria-pressed={open === `${t}.${s.id}`} aria-label={s.label} onClick={() => pickSection({ ...s, tab: t, tabName: "", key: `${t}.${s.id}` })} className="rail-btn">{s.icon}<span>{s.label}</span></button>
+                <button key={s.id} type="button" aria-pressed={open === `${t}.${s.id}`} aria-label={s.label} onClick={() => pickSection(t, `${t}.${s.id}`)} className="rail-btn">{s.icon}<span>{s.label}</span></button>
               ))}
             </div>
           ))}
@@ -120,7 +117,7 @@ export function Studio(p: Parts) {
         {active && (
           <aside className="float-panel absolute top-4 bottom-4 left-[92px] flex w-[336px] flex-col rounded-xl bg-panel" style={{ boxShadow: "var(--shadow-pop)" }}>
             <div className="flex h-11 shrink-0 items-center justify-between border-b border-line px-3">
-              <span className="text-[13px]"><span className="text-muted">{active.tabName} / </span><span className="font-medium">{active.label}</span></span>
+              <span className="text-[13px]"><span className="text-muted">{TABS[active.tab]} / </span><span className="font-medium">{active.label}</span></span>
               <button type="button" className="btn btn-ghost h-7 w-7 px-0" aria-label="Sluiten (Esc)" title="Sluiten (Esc)" onClick={() => setOpen(null)}>✕</button>
             </div>
             <div key={active.key} className="panel-body min-h-0 flex-1 overflow-y-auto pt-2">{active.render(p)}</div>
