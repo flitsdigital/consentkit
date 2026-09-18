@@ -235,6 +235,8 @@ export function Configurator({ files }: { files: Files }) {
   }, [url, key, privacy, days, bannerVersion, align, hide, vars, texts, cats, defaultCats, originals, bindings]);
 
   async function extract(target: string, apply: boolean) {
+    target = target.trim();
+    if (!/^https?:\/\//i.test(target)) { target = `https://${target}`; setUrl(target); }
     setStatus({ loading: true });
     try {
       const res = await fetch(`/api/extract?url=${encodeURIComponent(target)}`);
@@ -482,7 +484,7 @@ addEventListener("message", function (e) {
   // ---- Onderdelen; de Studio-layout zet ze neer ----
   const urlForm = (
     <form className="flex w-full items-center gap-2" onSubmit={(e) => { e.preventDefault(); extract(url, true); }}>
-      <input type="url" required value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://klant.webflow.io/" className="field font-mono text-xs" />
+      <input type="text" required value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://klant.webflow.io/" className="field font-mono text-xs" />
       <button type="submit" disabled={status.loading} className="btn">{status.loading ? <><Spinner /> Bezig</> : "Stijl ophalen"}</button>
     </form>
   );
