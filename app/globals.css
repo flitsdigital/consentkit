@@ -144,7 +144,8 @@ textarea.field { @apply h-auto py-1.5 leading-snug; }
 pre.code { @apply overflow-auto rounded-lg p-3 font-mono text-[11px] leading-relaxed text-fg/80 break-all whitespace-pre-wrap; background: #111; box-shadow: var(--shadow-ring); }
 
 @media (prefers-reduced-motion: reduce) {
-  .btn, .seg > button, .menu { transition-duration: 0ms; }
+  .btn:active, .seg > button:active, .menu-item:active, .rail-btn:active, .starter:active, .var-btn:active, .var-chip:active { transform: none; }
+  .menu, .menu:popover-open { transform: none; @starting-style { transform: none; } }
 }
 
 /* Studio-layout */
@@ -162,20 +163,23 @@ pre.code { @apply overflow-auto rounded-lg p-3 font-mono text-[11px] leading-rel
 .rail-btn:active { transform: scale(0.96); }
 .rail-btn[aria-pressed="true"] { color: var(--color-fg); }
 /* Glijdende pill (GlideSelect-techniek): positie/hoogte via inline style vanuit de rail */
-.rail-pill { position: absolute; left: 6px; right: 6px; top: 0; border-radius: 8px; background: var(--color-raised); box-shadow: var(--shadow-ring); opacity: 0; pointer-events: none; transition: transform 220ms var(--ease-out-strong), height 220ms var(--ease-out-strong), opacity 150ms ease; }
+.rail-pill { position: absolute; left: 6px; right: 6px; top: 0; border-radius: 8px; background: var(--color-raised); box-shadow: var(--shadow-ring); opacity: 0; pointer-events: none; transition: transform 220ms var(--ease-out-strong), opacity 150ms ease; }
 @media (prefers-reduced-motion: reduce) { .rail-pill { transition: opacity 150ms ease; } }
 .float-panel {
   transition: opacity 180ms var(--ease-out-strong), transform 180ms var(--ease-out-strong);
   @starting-style { opacity: 0; transform: translateY(6px) scale(0.98); }
 }
 .panel-body { transition: opacity 120ms var(--ease-out-strong); @starting-style { opacity: 0; } }
+/* Lege staat → banner: zeldzaam moment, mag een echte entree hebben */
+.preview-enter { transition: opacity 200ms var(--ease-out-strong), transform 200ms var(--ease-out-strong); @starting-style { opacity: 0; transform: translateY(8px); } }
+@media (prefers-reduced-motion: reduce) { .preview-enter { @starting-style { transform: none; } } }
 .tab-ink {
   position: absolute; left: 0; bottom: -9px; height: 2px; width: 100px; border-radius: 1px;
   background: var(--color-accent); transform-origin: left center;
   transition: transform 200ms var(--ease-out-strong);
 }
 @media (prefers-reduced-motion: reduce) {
-  .tab-ink, .float-panel { transition-duration: 0ms; }
+  .tab-ink { transition-duration: 0ms; }
   .float-panel { @starting-style { transform: none; } }
 }
 
@@ -214,7 +218,7 @@ pre.code { @apply overflow-auto rounded-lg p-3 font-mono text-[11px] leading-rel
 .btn-primary { transition-property: transform, background-color, color, box-shadow; transition-duration: 160ms, 200ms, 200ms, 160ms; }
 .export-progress { @apply ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 font-mono text-[10px]; background: oklch(0 0 0 / 0.12); }
 .menu-right { position-area: bottom span-left; transform-origin: top right; }
-@media (prefers-reduced-motion: reduce) { .check::before { transform: none; } .check svg path, .check { transition-duration: 0ms; } }
+@media (prefers-reduced-motion: reduce) { .check::before { transform: none; } .check svg path { transition-duration: 0ms; } .check-item:active[data-done="true"] .check { transform: none; } }
 
 /* GlideSelect (React Bits) — in onze tokens: surface = raised, highlight = pill, accent = vinkje */
 .glide-select {

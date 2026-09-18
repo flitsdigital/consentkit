@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 import { ButtonGroup, ColorControl, DialRoot, DialStore, Folder, PresetManager, Slider, TextControl, Toggle, TransitionControl, useDialKitController, type DialConfig, type EasingConfig, type Preset, type ShortcutConfig } from "dialkit";
 import { formatRgb, parse } from "culori";
@@ -10,7 +10,8 @@ import { AUTO_VARS, COLOR_VARS, DEFAULTS, VAR_NAMES, contrast, deriveAuto, hex, 
 
 type Files = { customCss: string; classesCss: string; componentHtml: string; clipboardJson: string; headSnippet: string; version: string };
 type WfNode = { _id: string; text?: boolean; v?: string; children?: string[]; data?: { xattr?: { name: string; value: string }[]; link?: { mode: string; url: string } } };
-type Cat = { key: string; title: string; text: string; signals: string; locked?: boolean };
+type Cat = { id?: string; key: string; title: string; text: string; signals: string; locked?: boolean };
+const cid = () => Math.random().toString(36).slice(2, 8);
 // Tekstnodes in clipboard.json, in volgorde: 0 titel, 1 tekst, 2 privacylink, 3–8 drie categorieën (titel, tekst), 9–12 knoppen
 const GENERAL_TEXTS: [number, string][] = [[0, "Titel"], [1, "Tekst"], [2, "Privacylink"], [9, "Knop: instellingen"], [10, "Knop: opslaan"], [11, "Knop: weigeren"], [12, "Knop: accepteren"]];
 const DEFAULT_SIGNALS: Record<string, string> = { analytics: "analytics_storage", marketing: "ad_storage, ad_user_data, ad_personalization" };
@@ -107,11 +108,23 @@ export function Configurator({ files }: { files: Files }) {
   const [url, setUrl] = useState(params.get("url") ?? "");
   const [texts, setTexts] = useState<string[]>(() => originals.map((o, i) => params.get(`t${i}`) ?? o));
   const defaultCats = useMemo<Cat[]>(() => [
-    { key: "", title: originals[3], text: originals[4], signals: "", locked: true },
-    { key: "analytics", title: originals[5], text: originals[6], signals: DEFAULT_SIGNALS.analytics },
-    { key: "marketing", title: originals[7], text: originals[8], signals: DEFAULT_SIGNALS.marketing },
+    { id: "c1", key: "", title: originals[3], text: originals[4], signals: "", locked: true },
+    { id: "c2", key: "analytics", title: originals[5], text: originals[6], signals: DEFAULT_SIGNALS.analytics },
+    { id: "c3", key: "marketing", title: originals[7], text: originals[8], signals: DEFAULT_SIGNALS.marketing },
   ], [originals]);
-  const [cats, setCats] = useState<Cat[]>(() => { try { return JSON.parse(params.get("cats") ?? "") as Cat[]; } catch { return defaultCats; } });
+  const [cats, setCats] = useState<Cat[]>(() => { try { return (JSON.parse(params.get("cats") ?? "") as Cat[]).map((c) => ({ ...c, id: c.id ?? cid() })); } catch { return defaultCats; } });
+  // FLIP: rijen glijden naar hun nieuwe plek na herordenen/toevoegen/verwijderen
+  const rowTops = useRef(new Map<string, number>());
+  useLayoutEffect(() => {
+    document.querySelectorAll<HTMLElement>(".drag-row[data-id]").forEach((r) => {
+      const top = r.getBoundingClientRect().top, prev = rowTops.current.get(r.dataset.id!);
+      if (prev !== undefined && prev !== top) {
+        r.style.transition = "none"; r.style.transform = `translateY(${prev - top}px)`; void r.offsetHeight;
+        r.style.transition = "transform 200ms var(--ease-out-strong)"; r.style.transform = "";
+      }
+      rowTops.current.set(r.dataset.id!, top);
+    });
+  }, [cats]);
   const [key, setKey] = useState(params.get("key") ?? "");
   const [privacy, setPrivacy] = useState(params.get("privacy") ?? PRIVACY_HREF);
   const [days, setDays] = useState(Number(params.get("days")) || 180);
@@ -301,13 +314,17 @@ export function Configurator({ files }: { files: Files }) {
   const categoriesJs = "{ " + cats.filter((c) => !c.locked && c.key).map((c) => `${c.key}: [${c.signals.split(",").map((x) => x.trim()).filter(Boolean).map((x) => `'${x}'`).join(", ")}]`).join(", ") + " }";
 
   const customCss = renderCustomCss(files.customCss, vars);
-  const previewCss = renderCustomCss(files.customCss, resolved);
+  // Preview: de :root-waarden gaan via postMessage naar de iframe (geen reload per slider-tick).
+  // srcdoc bevat de waarden van het moment van (her)bouwen en verandert alleen bij structuur (teksten, categorieën, prefs, layout).
+  const pushVars = () => frame.current?.contentWindow?.postMessage({ cb: "vars", vars: resolved }, "*");
+  useEffect(pushVars, [resolved]);
   const exportCss = `<style>\n${customCss}</style>`;
   const exportAlign = alignCss(align) && `<style>${alignCss(align)}</style>`;
   const headCode = `<script>window.FlitsConsent = { key: '${slug(key) === "categorie" ? "flits_consent" : slug(key)}', version: ${bannerVersion}, days: ${days}, categories: ${categoriesJs} };</script>\n${files.headSnippet.trim()}`;
   const footerCode = `<script src="https://cdn.jsdelivr.net/gh/flitsdigital/cookie-consent@${files.version}/dist/consent.min.js" defer></script>`;
 
-  const srcdoc = `<!doctype html><html><head><meta name="viewport" content="width=device-width"><style>${previewCss}</style><style>${files.classesCss}</style><style>
+  // `resolved` staat bewust niet in de deps: de waarden van dat moment gaan mee, live updates via pushVars.
+  const srcdoc = useMemo(() => `<!doctype html><html><head><meta name="viewport" content="width=device-width"><style>${renderCustomCss(files.customCss, resolved)}</style><style>${files.classesCss}</style><style>
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;font-family:system-ui,sans-serif;background:color-mix(in srgb, var(--cb-color) 8%, var(--cb-color-background))}
 .site{position:absolute;inset:0;width:100%;height:100%;border:0}
@@ -323,8 +340,12 @@ document.addEventListener("click", function (e) {
   if (act === "settings" || act === "save") parent.postMessage({ cb: act }, "*");
   if (a.hasAttribute("data-cb-toggle")) { var on = a.classList.toggle("is-on"); a.setAttribute("aria-checked", String(on)); }
 });
-addEventListener("message", function (e) { if (e.data && e.data.cb === "replay") { var t = document.querySelector("[data-cb-toggle]"); if (t) t.click(); } });
-</script></body></html>`;
+addEventListener("message", function (e) {
+  if (!e.data) return;
+  if (e.data.cb === "replay") { var t = document.querySelector("[data-cb-toggle]"); if (t) t.click(); }
+  if (e.data.cb === "vars") for (var k in e.data.vars) document.documentElement.style.setProperty(k, e.data.vars[k]);
+});
+</script></body></html>`, [files, siteBg, url, prefsOpen, align, hide, texts, cats, privacy, defaultCats, originals]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function flash(name: string) { setCopied(name); setTimeout(() => setCopied(""), 1600); }
   async function copy(name: string, text: string) { await navigator.clipboard.writeText(text); flash(name); setDone((d) => [...new Set([...d, name])]); }
@@ -340,7 +361,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
   }
 
   const copyBtn = (name: string, text: string) => (
-    <button type="button" onClick={() => copy(name, text)} className="btn h-7 px-2.5 text-xs">
+    <button type="button" onClick={() => copy(name, text)} className="btn h-7 min-w-[6.5rem] px-2.5 text-xs">
       {copied === name ? <><Check /> Gekopieerd</> : "Kopieer"}
     </button>
   );
@@ -417,7 +438,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
     </div>
   );
   const applyLayout = (l: Layout) => {
-    setHide(l.hide);
+    setHide((h) => (h.join() === l.hide.join() ? h : l.hide)); // zelfde referentie = geen iframe-reload
     dial.setValues(toDialValues({ ...resolved, ...l.patch }));
   };
   const starters = (
@@ -569,7 +590,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
       {cats.map((c, i) => {
         const upd = (patch: Partial<Cat>) => setCats((cs) => cs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
         return (
-          <div key={i} className="drag-row" data-over={drag.over === i && drag.from !== i ? (drag.from! < i ? "after" : "before") : undefined} data-dragging={drag.from === i || undefined}>
+          <div key={c.id ?? i} data-id={c.id} className="drag-row" data-over={drag.over === i && drag.from !== i ? (drag.from! < i ? "after" : "before") : undefined} data-dragging={drag.from === i || undefined}>
             <button type="button" className="drag-handle" aria-label="Versleep categorie" title="Versleep" onPointerDown={startDrag(i)}><Grip /></button>
             <Folder title={c.title || `Categorie ${i + 1}`} inline defaultOpen={false}>
               <div className="flex flex-col gap-1.5">
@@ -590,7 +611,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
         );
       })}
       <div className="pt-2">
-        <ButtonGroup buttons={[{ label: "+ Nieuwe categorie", onClick: () => setCats((cs) => [...cs, { key: `categorie_${Date.now() % 10000}`, title: "Nieuwe categorie", text: "", signals: "" }]) }]} />
+        <ButtonGroup buttons={[{ label: "+ Nieuwe categorie", onClick: () => setCats((cs) => [...cs, { id: cid(), key: `categorie_${Date.now() % 10000}`, title: "Nieuwe categorie", text: "", signals: "" }]) }]} />
       </div>
     </>
   );
@@ -700,6 +721,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
       ref={frame}
       title="Preview"
       srcDoc={srcdoc}
+      onLoad={pushVars}
       data-testid="preview"
       className="mx-auto block rounded-xl bg-white shadow-[0_0_0_1px_oklch(1_0_0_/_0.1),0_24px_64px_oklch(0_0_0_/_0.5)]"
       style={{ width: mobile ? 390 : "min(1024px, 100%)", height: mobile ? 720 : 640, maxWidth: "100%" }}
@@ -742,4 +764,4 @@ const Arrow = () => <svg width="12" height="12" viewBox="0 0 16 16" fill="none" 
 const Check = () => <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3 7-7" /></svg>;
 const VarIcon = () => <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" /></svg>;
 const Unlink = () => <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 9.5l3-3M9 4l1-1a2.5 2.5 0 0 1 3.5 3.5l-1 1M7 12l-1 1a2.5 2.5 0 0 1-3.5-3.5l1-1M3 3l10 10" /></svg>;
-const Spinner = () => <svg className="animate-spin" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M8 2a6 6 0 1 1-6 6" /></svg>;
+const Spinner = () => <svg className="animate-spin [animation-duration:0.7s]" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M8 2a6 6 0 1 1-6 6" /></svg>;

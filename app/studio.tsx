@@ -141,7 +141,7 @@ export function Studio(p: Parts) {
       <div className="relative min-h-0">
         <main className="canvas absolute inset-0 flex items-center justify-center overflow-auto p-8 pl-28">
           {p.emptyState ?? (
-            <div className="relative w-full max-w-5xl">
+            <div className="preview-enter relative w-full max-w-5xl">
               <div className="mb-2 text-center font-mono text-[11px] text-muted">{p.artboard}</div>
               {p.preview}
             </div>
