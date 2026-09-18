@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } 
 import { useSearchParams } from "next/navigation";
 import { ButtonGroup, ColorControl, DialRoot, DialStore, Folder, PresetManager, Slider, TextControl, TransitionControl, useDialKitController, type DialConfig, type EasingConfig, type Preset } from "dialkit";
 import { formatRgb, parse } from "culori";
-import { FocusLayout, InspectorLayout, PrototypeSwitcher, RailInspectorLayout, SidebarLayout, StepsLayout, StudioLayout, StudioV2Layout, type Parts } from "./prototype-layouts";
+import { Studio, type Parts } from "./studio";
 import { AUTO_VARS, COLOR_VARS, DEFAULTS, VAR_NAMES, contrast, deriveAuto, hex, keyFromUrl, mapToVars, renderCustomCss, toPx, type Extracted, type VarName, type Vars } from "@/lib/mapping";
 
 type Files = { customCss: string; classesCss: string; componentHtml: string; clipboardJson: string; headSnippet: string; version: string };
@@ -166,8 +166,6 @@ export function Configurator({ files }: { files: Files }) {
   // Deelbare state: alles wat afwijkt van de default in de querystring
   useEffect(() => {
     const q = new URLSearchParams();
-    const variant = new URLSearchParams(location.search).get("variant"); // prototype-switch bewaren
-    if (variant) q.set("variant", variant);
     if (url) q.set("url", url);
     if (key) q.set("key", key);
     if (privacy !== PRIVACY_HREF) q.set("privacy", privacy);
@@ -375,7 +373,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
 
   const domain = (() => { try { return new URL(url).hostname; } catch { return "Nieuwe banner"; } })();
 
-  // ---- Onderdelen; de layout-varianten (prototype) zetten ze anders neer ----
+  // ---- Onderdelen; de Studio-layout zet ze neer ----
   const urlForm = (
     <form className="flex w-full items-center gap-2" onSubmit={(e) => { e.preventDefault(); extract(url, true); }}>
       <input type="url" required value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://klant.webflow.io/" className="field font-mono text-xs" />
@@ -489,12 +487,6 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
       </div>
     </>
   );
-  const textsPanel = (
-    <div className="dialkit-root texts px-1 pb-4" data-theme="dark">
-      <Folder title="Algemeen" inline>{generalTexts}</Folder>
-      {categoryList}
-    </div>
-  );
   const contrastStrip = (
     <div className="grid grid-cols-3 gap-1.5 px-3 pb-2">
       {CONTRAST_PAIRS.map(([a, b, name]) => {
@@ -518,14 +510,6 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
     maten: <div className="flex flex-col gap-1.5">{paths("maten").map(slider)}</div>,
     effect: effectPanel,
   };
-  const stylePanel = (
-    <div className="dialkit-root px-3 pb-4" data-theme="dark">
-      <Folder title="Kleuren" inline>{styleFolders.kleuren}</Folder>
-      <Folder title="Typografie" inline>{styleFolders.typografie}</Folder>
-      <Folder title="Maten" inline>{styleFolders.maten}</Folder>
-      <Folder title="Effect" inline defaultOpen={false}>{styleFolders.effect}</Folder>
-    </div>
-  );
   const behaviourPanel = (
     <div className="dialkit-root texts px-1 pb-4" data-theme="dark">
       <div className="flex flex-col gap-1.5">
@@ -552,20 +536,17 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
       title="Preview"
       srcDoc={srcdoc}
       data-testid="preview"
-      className="block rounded-xl bg-white shadow-[0_0_0_1px_oklch(1_0_0_/_0.1),0_24px_64px_oklch(0_0_0_/_0.5)]"
+      className="mx-auto block rounded-xl bg-white shadow-[0_0_0_1px_oklch(1_0_0_/_0.1),0_24px_64px_oklch(0_0_0_/_0.5)]"
       style={{ width: mobile ? 390 : "min(1024px, 100%)", height: mobile ? 720 : 640, maxWidth: "100%" }}
     />
   );
 
-  const parts: Parts = { domain, urlForm, errorLine, previewControls, shareBtn, foundPanel, generalTexts, categoryList, textsPanel, contrastStrip, versions, styleFolders, stylePanel, behaviourPanel, exportPanel, preview, version: files.version, hasSite: !!extracted };
-  const variant = params.get("variant") ?? "G";
-  const Layout = { A: StudioLayout, B: InspectorLayout, C: FocusLayout, D: RailInspectorLayout, E: SidebarLayout, F: StepsLayout, G: StudioV2Layout }[variant] ?? StudioV2Layout;
+  const parts: Parts = { domain, urlForm, errorLine, previewControls, shareBtn, foundPanel, generalTexts, categoryList, contrastStrip, versions, styleFolders, behaviourPanel, exportPanel, preview, version: files.version };
   return (
     <>
-      <Layout {...parts} />
+      <Studio {...parts} />
       {/* Onzichtbare DialRoot: levert alleen de globale shortcut-listener (toets + scroll) voor onze eigen layout */}
       <div hidden><DialRoot mode="inline" productionEnabled /></div>
-      <PrototypeSwitcher current={variant} />
     </>
   );
 }
