@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
-import { ButtonGroup, ColorControl, DialRoot, DialStore, Folder, PresetManager, Slider, TextControl, Toggle, TransitionControl, useDialKitController, type DialConfig, type EasingConfig, type Preset, type ShortcutConfig } from "dialkit";
+import { ButtonGroup, ColorControl, DialRoot, DialStore, EasingVisualization, Folder, PresetManager, Slider, TextControl, Toggle, useDialKitController, type DialConfig, type EasingConfig, type Preset, type ShortcutConfig } from "dialkit";
 import { formatRgb, parse } from "culori";
 import { Studio, type Parts } from "./studio";
 import GlideSelect from "./glide-select";
@@ -437,7 +437,8 @@ addEventListener("message", function (e) {
     <div className="flex flex-col gap-1.5">
       {Object.entries(SHADOW).map(([k, d]) => sliderFor(`effect.${k}`, d.range, d.unit, d.label))}
       <ColorControl label="Schaduw kleur" value={fx?.color ?? "#000000"} onChange={(v) => dial.setValue("effect.color", v)} />
-      {fx?.easing?.ease && <TransitionControl panelId="banner" path="effect.easing" label="Switch-easing" value={fx.easing} onChange={(v) => dial.setValue("effect.easing", v as unknown as string)} hideDuration />}
+      {/* ponytail: alleen de curve — Time/Physics (springs) passen niet in een CSS cubic-bezier */}
+      {fx?.easing?.ease && <Folder title="Switch-easing" defaultOpen><EasingVisualization easing={fx.easing} onChange={(ease) => dial.setValue("effect.easing", { ...fx.easing, ease } as unknown as string)} /></Folder>}
       <ButtonGroup buttons={[{ label: "Speel switch-animatie af", onClick: replay }]} />
     </div>
   );
