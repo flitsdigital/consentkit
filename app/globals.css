@@ -87,7 +87,7 @@ textarea.field { @apply h-auto py-1.5 leading-snug; }
 .dialkit-root { --dial-shadow: none; }
 .dialkit-root .dialkit-panel-inner { background: transparent; }
 /* Foldertitel op dezelfde tekst-as als de tekst ín de controls (die hebben 12px binnenpadding) */
-.dialkit-root .dialkit-folder-header { padding-inline: 12px 6px; }
+.dialkit-root .dialkit-folder:not(.dialkit-folder-root) > .dialkit-folder-header { padding-inline: 14px 6px; }
 .var-btn {
   @apply flex size-9 shrink-0 items-center justify-center rounded-lg text-muted;
   background: var(--dial-surface);
