@@ -16,4 +16,4 @@ Deploy: Vercel, geen env-vars nodig. `prebuild` draait `sync`, dus elke deploy p
 
 Deelbare state: alle gekozen waarden staan in de querystring (`?url=…&cb-color-accent=%23…&t0=…&key=…`).
 
-Bestanden: `lib/extract.ts` (fetch + css-tree, server), `lib/mapping.ts` (mapping, contrast, custom.css-rendering), `app/configurator.tsx` (UI; de variabelen-editor is een inline [DialKit](https://dialkit.dev)-panel), `app/api/extract/route.ts`.
+Bestanden: `lib/extract.ts` (fetch + css-tree, server), `lib/mapping.ts` (mapping, contrast, custom.css-rendering), `app/configurator.tsx` (state + onderdelen), `app/studio.tsx` (layout: tabs, rail, zwevend paneel, canvas; de controls zijn [DialKit](https://dialkit.dev)-componenten), `app/api/extract/route.ts`.
