@@ -325,6 +325,49 @@ export function Configurator({ files }: { files: Files }) {
   const exportAlign = alignCss(align) && `<style>${alignCss(align)}</style>`;
   const headCode = `<script>window.FlitsConsent = { key: '${slug(key) === "categorie" ? "flits_consent" : slug(key)}', version: ${bannerVersion}, days: ${days}, categories: ${categoriesJs} };</script>\n${files.headSnippet.trim()}`;
   const footerCode = `<script src="https://cdn.jsdelivr.net/gh/flitsdigital/cookie-consent@${files.version}/dist/consent.min.js" defer></script>`;
+  // Eén prompt met alles erin, voor Claude Code/Cursor/agents die de banner op een (niet-)Webflow-site zetten.
+  const agentPrompt = () => `Implementeer deze cookiebanner (Flits cookie-consent v${files.version}, geconfigureerd met Consentkit) op ${url || "de website"}. Verander niets aan de waarden, teksten of attributen hieronder; alleen de plek waar het staat mag anders als het platform dat vereist.
+
+## 1. In <head>, vóór Google Tag Manager
+Zet de Consent Mode-defaults en de config bóven de GTM-snippet, anders vuurt GTM zonder consent.
+\`\`\`html
+${headCode}
+\`\`\`
+
+## 2. CSS (ook in <head>)
+Alleen de :root-waarden zijn aangepast; de rest is de standaard stylesheet. Voeg toe zoals hij is.
+\`\`\`html
+${exportCss}${exportAlign ? `\n${exportAlign}` : ""}
+\`\`\`
+
+## 3. Script, vlak voor </body>
+\`\`\`html
+${footerCode}
+\`\`\`
+
+## 4. Markup, direct na <body>
+Webflow: plak het component via "Copy to Webflow" in Consentkit (${location.href}) — de classes zitten dan in de Designer. Elk ander platform: plak deze HTML plus de class-CSS hieronder. De data-cb-*/aria-attributen zijn het contract met het script en moeten exact blijven; classes mogen worden hernoemd zolang de CSS meegaat.
+\`\`\`html
+${applyTextsHtml(files.componentHtml.split("<!-- Ergens")[0]).trim()}
+\`\`\`
+\`\`\`html
+<style>
+${files.classesCss.trim()}
+</style>
+\`\`\`
+
+## 5. Cookie-instellingen opnieuw openen
+Zet ergens in de footer een link met \`data-cb-open\`; het script koppelt hem automatisch:
+\`\`\`html
+<a href="#" data-cb-open="true">Cookie-instellingen</a>
+\`\`\`
+
+## 6. Controleren
+- Banner verschijnt bij eerste bezoek, verdwijnt na een keuze en komt niet terug (key \`${slug(key)}\`, ${days} dagen, versie ${bannerVersion}).
+- "Weigeren" zet alle Consent Mode-signalen op denied; "Alles accepteren" op granted. Check met Google Tag Assistant.
+- Niet-Google tags in GTM: zet per tag "Require additional consent" op het juiste signaal (${cats.filter((c) => !c.locked && c.key).map((c) => `${c.title}: ${c.signals}`).join("; ")}).
+- De privacybeleid-link wijst naar ${privacy}.
+`;
 
   // `resolved` staat bewust niet in de deps: de waarden van dat moment gaan mee, live updates via pushVars.
   const srcdoc = useMemo(() => `<!doctype html><html><head><meta name="viewport" content="width=device-width"><style>${renderCustomCss(files.customCss, resolved)}</style><style>${files.classesCss}</style><style>
@@ -668,7 +711,8 @@ addEventListener("message", function (e) {
       <Step n={4} done={done.includes("webflow")} title="Component" sub="Plak met ⌘V in de Webflow Designer">
         <button type="button" onClick={copyToWebflow} className="btn btn-primary h-9 w-full">{copied === "webflow" ? <><Check /> Gekopieerd – plak in de Designer</> : "Copy to Webflow"}</button>
       </Step>
-      <Step n={5} title="Testen" sub="Publiceer in Webflow en open de site">
+      <Step n={5} title="Voor een agent" sub="Alles in één prompt, voor Claude Code of Cursor" action={<button type="button" onClick={() => copy("agent", agentPrompt())} className="btn h-7 min-w-[6.5rem] px-2.5 text-xs">{copied === "agent" ? <><Check /> Gekopieerd</> : "Kopieer"}</button>}><p className="text-[11px] leading-relaxed text-muted">Head, CSS, footer, markup en checklist als één instructie. Plak in Claude Code of Cursor: “implementeer dit”.</p></Step>
+      <Step n={6} title="Testen" sub="Publiceer in Webflow en open de site">
           <div className="flex gap-2">
             <a href={url || "#"} target="_blank" rel="noreferrer" className="btn flex-1" aria-disabled={!url}>Open site <Arrow /></a>
             <a href="https://tagassistant.google.com" target="_blank" rel="noreferrer" className="btn flex-1">Tag Assistant <Arrow /></a>
@@ -700,6 +744,7 @@ addEventListener("message", function (e) {
         ))}
       </div>
       <div className="my-1 h-px bg-line" />
+      <button type="button" className="menu-item" onClick={() => copy("agent", agentPrompt())}><span className="flex-1">Copy for agents</span><span className="text-[10px] text-muted">{copied === "agent" ? "Gekopieerd" : "prompt"}</span></button>
       <button type="button" className="menu-item" popoverTarget="export-menu" popoverTargetAction="hide" onClick={() => window.dispatchEvent(new CustomEvent("consentkit:open", { detail: "installatie" }))}><span className="flex-1">Alle stappen bekijken</span><span className="text-muted">→</span></button>
     </div>
   );
