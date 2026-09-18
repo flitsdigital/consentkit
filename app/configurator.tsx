@@ -43,15 +43,15 @@ const DIAL: Record<string, { v: VarName; range?: [number, number, number?]; unit
   "maten.switchPadding": { v: "--cb-switch-padding", range: [0, 8] },
   "maten.zIndex": { v: "--cb-z-index", range: [1, 99999, 1], unit: "" },
 };
-// Effect: schaduw als x/y/blur/opacity (kleur volgt --cb-color), easing als DialKit-bézier. Geen tekstvelden meer.
-type Shadow = { x: number; y: number; blur: number; opacity: number };
-const parseShadow = (v: string): Shadow => { const m = v.match(/(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px\s+rgba?\([^)]*?([\d.]+)\)/); return m ? { x: +m[1], y: +m[2], blur: +m[3], opacity: +m[4] } : { x: 0, y: 12, blur: 40, opacity: 0.18 }; };
+// Effect: schaduw als x/y/blur/opacity/kleur (kleur volgt --cb-color na extractie), easing als DialKit-bézier. Geen tekstvelden meer.
+type Shadow = { x: number; y: number; blur: number; opacity: number; color: string };
+const parseShadow = (v: string): Shadow => { const m = v.match(/(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px\s+(rgba?\([^)]*?([\d.]+)\))/); return m ? { x: +m[1], y: +m[2], blur: +m[3], opacity: +m[5], color: hex(m[4]) } : { x: 0, y: 12, blur: 40, opacity: 0.18, color: "#1b020d" }; };
 const parseEase = (v: string): EasingConfig => { const m = v.match(/cubic-bezier\(([^)]+)\)/); const e = m?.[1].split(",").map(Number); return { type: "easing", duration: 0.25, ease: e?.length === 4 ? (e as EasingConfig["ease"]) : [0.32, 0.72, 0, 1] }; };
 const px = (n: number) => (n === 0 ? "0" : `${n}px`);
-const shadowCss = (sh: Shadow, color: string) => `${px(sh.x)} ${px(sh.y)} ${px(sh.blur)} ${formatRgb({ ...parse(color)!, alpha: sh.opacity })}`;
+const shadowCss = (sh: Shadow) => `${px(sh.x)} ${px(sh.y)} ${px(sh.blur)} ${formatRgb({ ...parse(sh.color)!, alpha: sh.opacity })}`;
 const easeCss = (e: EasingConfig) => `cubic-bezier(${e.ease.join(", ")})`;
-const SHADOW: Record<keyof Shadow, { label: string; range: [number, number, number?]; unit: string }> = { x: { label: "Schaduw x", range: [-40, 40], unit: "px" }, y: { label: "Schaduw y", range: [-40, 60], unit: "px" }, blur: { label: "Schaduw blur", range: [0, 120], unit: "px" }, opacity: { label: "Schaduw opacity", range: [0, 1, 0.01], unit: "" } };
-const effectConfig = (vars: Vars): DialConfig => { const sh = parseShadow(vars["--cb-shadow"]); return { ...Object.fromEntries(Object.entries(SHADOW).map(([k, d]) => [k, [sh[k as keyof Shadow], ...d.range]])), easing: parseEase(vars["--cb-ease"]), replay: { type: "action", label: "Speel switch-animatie af" } }; };
+const SHADOW: Record<Exclude<keyof Shadow, "color">, { label: string; range: [number, number, number?]; unit: string }> = { x: { label: "Schaduw x", range: [-40, 40], unit: "px" }, y: { label: "Schaduw y", range: [-40, 60], unit: "px" }, blur: { label: "Schaduw blur", range: [0, 120], unit: "px" }, opacity: { label: "Schaduw opacity", range: [0, 1, 0.01], unit: "" } };
+const effectConfig = (vars: Vars): DialConfig => { const sh = parseShadow(vars["--cb-shadow"]); return { ...Object.fromEntries(Object.entries(SHADOW).map(([k, d]) => [k, [sh[k as keyof typeof SHADOW], ...d.range]])), color: sh.color, easing: parseEase(vars["--cb-ease"]), replay: { type: "action", label: "Speel switch-animatie af" } }; };
 type EffectValues = Shadow & { easing?: EasingConfig };
 // Layout-starters: welke elementen (knoppen) en welke vorm. Kleur/radius doe je daarna in de tool.
 type Align = "links" | "midden" | "rechts";
@@ -88,7 +88,7 @@ const toVars = (values: DialValues): Vars => {
   }
   const fx = values.effect as unknown as EffectValues | undefined;
   if (fx?.easing?.ease) {
-    vars["--cb-shadow"] = shadowCss(fx, vars["--cb-color"]);
+    vars["--cb-shadow"] = shadowCss(fx);
     vars["--cb-ease"] = easeCss(fx.easing);
   }
   return vars;
@@ -253,6 +253,7 @@ export function Configurator({ files }: { files: Files }) {
         const mapped = mapToVars(json);
         const auto = deriveAuto(mapped);
         dial.setValues(toDialValues(mapped));
+        dial.setValue("effect.color", mapped["--cb-color"]);
         setBindings((b) => { const n = { ...b }; for (const a of AUTO_VARS) if (mapped[a] === auto[a]) n[a] = "auto"; else delete n[a]; return n; });
         setKey(keyFromUrl(target));
       }
@@ -435,6 +436,7 @@ addEventListener("message", function (e) {
   const effectPanel = (
     <div className="flex flex-col gap-1.5">
       {Object.entries(SHADOW).map(([k, d]) => sliderFor(`effect.${k}`, d.range, d.unit, d.label))}
+      <ColorControl label="Schaduw kleur" value={fx?.color ?? "#000000"} onChange={(v) => dial.setValue("effect.color", v)} />
       {fx?.easing?.ease && <TransitionControl panelId="banner" path="effect.easing" label="Switch-easing" value={fx.easing} onChange={(v) => dial.setValue("effect.easing", v as unknown as string)} hideDuration />}
       <ButtonGroup buttons={[{ label: "Speel switch-animatie af", onClick: replay }]} />
     </div>
