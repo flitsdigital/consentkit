@@ -698,8 +698,21 @@ addEventListener("message", function (e) {
     </>
   );
   const steps = ["css", "head", "footer", "webflow"];
+  const [forAgent, setForAgent] = useState(false); // Webflow-stappen of één agent-prompt
+  const agentView = () => ( // pas bij tonen opbouwen: agentPrompt() gebruikt location
+    <div className="space-y-3">
+      <p className="text-[11px] leading-relaxed text-muted">Head, CSS, footer, markup met class-CSS en een checklist als één instructie. Plak in Claude Code of Cursor met “implementeer dit”. Werkt ook buiten Webflow.</p>
+      <button type="button" onClick={() => copy("agent", agentPrompt())} className="btn btn-primary h-9 w-full">{copied === "agent" ? <><Check /> Gekopieerd</> : "Copy for agents"}</button>
+      <pre className="code max-h-72">{agentPrompt()}</pre>
+    </div>
+  );
   const exportPanel = (
     <div className="space-y-4 px-3 pb-4">
+      <div className="seg w-full" role="group" aria-label="Exporteren voor">
+        <button type="button" className="flex-1" aria-pressed={!forAgent} onClick={() => setForAgent(false)}>Webflow</button>
+        <button type="button" className="flex-1" aria-pressed={forAgent} onClick={() => setForAgent(true)}>Agent</button>
+      </div>
+      {forAgent ? agentView() : <>
       <div className="flex items-center gap-1.5 text-[11px] text-muted">
           {steps.map((k, i) => <span key={k} className={`flex size-5 items-center justify-center rounded-full ${done.includes(k) ? "bg-emerald-400/20 text-emerald-300" : "bg-raised"}`}>{done.includes(k) ? <Check /> : i + 1}</span>)}
           <span className="ml-1">{done.filter((d) => steps.includes(d)).length}/{steps.length} in Webflow geplakt</span>
@@ -711,14 +724,14 @@ addEventListener("message", function (e) {
       <Step n={4} done={done.includes("webflow")} title="Component" sub="Plak met ⌘V in de Webflow Designer">
         <button type="button" onClick={copyToWebflow} className="btn btn-primary h-9 w-full">{copied === "webflow" ? <><Check /> Gekopieerd – plak in de Designer</> : "Copy to Webflow"}</button>
       </Step>
-      <Step n={5} title="Voor een agent" sub="Alles in één prompt, voor Claude Code of Cursor" action={<button type="button" onClick={() => copy("agent", agentPrompt())} className="btn h-7 min-w-[6.5rem] px-2.5 text-xs">{copied === "agent" ? <><Check /> Gekopieerd</> : "Kopieer"}</button>}><p className="text-[11px] leading-relaxed text-muted">Head, CSS, footer, markup en checklist als één instructie. Plak in Claude Code of Cursor: “implementeer dit”.</p></Step>
-      <Step n={6} title="Testen" sub="Publiceer in Webflow en open de site">
+      <Step n={5} title="Testen" sub="Publiceer in Webflow en open de site">
           <div className="flex gap-2">
             <a href={url || "#"} target="_blank" rel="noreferrer" className="btn flex-1" aria-disabled={!url}>Open site <Arrow /></a>
             <a href="https://tagassistant.google.com" target="_blank" rel="noreferrer" className="btn flex-1">Tag Assistant <Arrow /></a>
           </div>
           <p className="mt-2 text-[11px] leading-relaxed text-muted">Check: banner verschijnt, ‘Weigeren’ zet alles op denied, na keuze geen banner meer. Cookie-instellingen-link in de footer opent hem weer.</p>
         </Step>
+      </>}
     </div>
   );
   // Export als checklist-menu in de topbar. Klik = kopiëren + afvinken (menu blijft open).
@@ -732,7 +745,9 @@ addEventListener("message", function (e) {
   const [row, setRow] = useState<number | null>(null); // glijdende pill in het export-menu
   const exportMenu = (
     <div id="export-menu" popover="auto" className="menu menu-right w-64">
-      <div className="menu-title flex items-center justify-between">Installatie <span className="font-mono normal-case">{doneCount}/{checkItems.length}</span></div>
+      <button type="button" className="menu-item" onClick={() => copy("agent", agentPrompt())}><span className="flex-1">Copy for agents</span><span className="text-[10px] text-muted">{copied === "agent" ? "Gekopieerd" : "prompt"}</span></button>
+      <div className="my-1 h-px bg-line" />
+      <div className="menu-title flex items-center justify-between">Webflow <span className="font-mono normal-case">{doneCount}/{checkItems.length}</span></div>
       <div className="check-list" onPointerLeave={() => setRow(null)}>
         <span className="check-pill" aria-hidden style={{ transform: `translateY(${(row ?? 0) * 33}px)`, opacity: row === null ? 0 : 1 }} />
         {checkItems.map(([k, lbl, hint, act], i) => (
@@ -744,7 +759,6 @@ addEventListener("message", function (e) {
         ))}
       </div>
       <div className="my-1 h-px bg-line" />
-      <button type="button" className="menu-item" onClick={() => copy("agent", agentPrompt())}><span className="flex-1">Copy for agents</span><span className="text-[10px] text-muted">{copied === "agent" ? "Gekopieerd" : "prompt"}</span></button>
       <button type="button" className="menu-item" popoverTarget="export-menu" popoverTargetAction="hide" onClick={() => window.dispatchEvent(new CustomEvent("consentkit:open", { detail: "installatie" }))}><span className="flex-1">Alle stappen bekijken</span><span className="text-muted">→</span></button>
     </div>
   );
