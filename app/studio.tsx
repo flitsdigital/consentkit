@@ -47,7 +47,7 @@ const Icon = {
   Ruler: () => svg(<><rect x="2" y="5" width="12" height="6" rx="1" /><path d="M5 5v2M8 5v3M11 5v2" /></>),
   Code: () => svg(<><path d="M6 4L2 8l4 4M10 4l4 4-4 4" /></>),
   Check: () => svg(<path d="M3.5 8.5l3 3 6.5-6.5" />),
-  Undo: () => <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M2.5 6.5h7.5a3.5 3.5 0 0 1 0 7H7" /><path d="M5.5 3.5l-3 3 3 3" /></svg>,
+  Undo: () => <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M3 8h9.5a4.5 4.5 0 0 1 0 9H8" /><path d="M6.5 4.5L3 8l3.5 3.5" /></svg>,
   Spark: () => svg(<><path d="M8 2l1.5 4.5L14 8l-4.5 1.5L8 14l-1.5-4.5L2 8l4.5-1.5z" /></>),
 };
 export const Cookie = () => <svg width="18" height="18" viewBox="0 0 24 24" className="text-accent" aria-hidden><path fillRule="evenodd" clipRule="evenodd" fill="currentColor" d="M2 12C2 6.47715 6.47715 2 12 2C12.3853 2 12.7659 2.02184 13.1406 2.06443L14.1463 2.17875L14.0198 3.18304C14.0068 3.28644 14 3.39219 14 3.5C14 4.76634 14.9425 5.81419 16.1638 5.97771L16.9209 6.07907L17.0223 6.83617C17.1858 8.05754 18.2337 9 19.5 9C19.8094 9 20.1035 8.94425 20.3743 8.84314L21.4192 8.45303L21.6934 9.53406C21.8938 10.3239 22 11.1503 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12ZM10 8.5C10 9.32843 9.32843 10 8.5 10C7.67157 10 7 9.32843 7 8.5C7 7.67157 7.67157 7 8.5 7C9.32843 7 10 7.67157 10 8.5ZM14 11.5C14 12.3284 13.3284 13 12.5 13C11.6716 13 11 12.3284 11 11.5C11 10.6716 11.6716 10 12.5 10C13.3284 10 14 10.6716 14 11.5ZM17 15C17.5523 15 18 14.5523 18 14C18 13.4477 17.5523 13 17 13C16.4477 13 16 13.4477 16 14C16 14.5523 16.4477 15 17 15ZM13 16.5C13 17.3284 12.3284 18 11.5 18C10.6716 18 10 17.3284 10 16.5C10 15.6716 10.6716 15 11.5 15C12.3284 15 13 15.6716 13 16.5ZM7 15C7.55228 15 8 14.5523 8 14C8 13.4477 7.55228 13 7 13C6.44772 13 6 13.4477 6 14C6 14.5523 6.44772 15 7 15Z" /></svg>;
@@ -95,6 +95,19 @@ function SlidingTabs({ tab, onTab }: { tab: Tab; onTab: (t: Tab) => void }) {
 }
 export function Studio(p: Parts) {
   const [open, setOpen] = useState<string | null>(p.emptyState ? null : "stijl.site"); // lege staat = geen paneel
+  const [hover, setHover] = useState<string | null>(null);
+  const rail = useRef<HTMLElement>(null);
+  const railPill = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const target = hover ?? open;
+    const el = target && rail.current?.querySelector<HTMLElement>(`[data-key="${target}"]`);
+    const pill = railPill.current;
+    if (!pill) return;
+    if (!el) { pill.style.opacity = "0"; return; }
+    pill.style.transform = `translateY(${el.offsetTop}px)`;
+    pill.style.height = `${el.offsetHeight}px`;
+    pill.style.opacity = "1";
+  }, [hover, open]);
   const hadEmpty = useRef(!!p.emptyState);
   useEffect(() => { if (hadEmpty.current && !p.emptyState) { hadEmpty.current = false; setOpen("stijl.site"); } }, [p.emptyState]); // na ophalen: Site-paneel open
   const active = ALL_SECTIONS.find((s) => s.key === open);
@@ -114,7 +127,7 @@ export function Studio(p: Parts) {
         <div className="flex items-center gap-2 text-[13px]"><Cookie /><span className="font-semibold tracking-tight">consentkit</span><span className="text-muted">/</span><span className="truncate text-muted">{p.domain}</span></div>
         <SlidingTabs tab={tab} onTab={pickTab} />
         <div className="flex items-center justify-end gap-2">
-          <button type="button" className="btn btn-ghost h-8 w-8 px-0" title="Ongedaan maken (⌘Z)" aria-label="Ongedaan maken" onClick={p.undo}><Icon.Undo /></button>
+          <button type="button" className="btn btn-ghost h-8 w-9 px-0" title="Ongedaan maken (⌘Z)" aria-label="Ongedaan maken" onClick={p.undo}><Icon.Undo /></button>
           {p.shareBtn}
           <span className="relative">
             <button type="button" className="btn btn-primary ps-3 pe-2.5" data-done={p.doneCount === p.doneTotal} popoverTarget="export-menu">
@@ -134,13 +147,14 @@ export function Studio(p: Parts) {
             </div>
           )}
         </main>
-        {/* Vaste rail: alle secties, gegroepeerd per tab */}
-        <nav className="absolute top-4 left-4 flex w-[68px] flex-col items-stretch gap-0.5 rounded-xl bg-panel p-1.5" style={{ boxShadow: "var(--shadow-pop)" }} aria-label="Secties">
+        {/* Vaste rail: alle secties, gegroepeerd per tab. Eén pill glijdt naar hover, valt terug op de open sectie. */}
+        <nav ref={rail} className="absolute top-4 left-4 flex w-[68px] flex-col items-stretch gap-0.5 rounded-xl bg-panel p-1.5" style={{ boxShadow: "var(--shadow-pop)" }} aria-label="Secties" onPointerLeave={() => setHover(null)}>
+          <span ref={railPill} className="rail-pill" aria-hidden />
           {TAB_IDS.map((t, gi) => (
             <div key={t} className="flex flex-col gap-0.5">
               {gi > 0 && <span className="h-1" />}
               {SECTIONS[t].map((s) => (
-                <button key={s.id} type="button" aria-pressed={open === `${t}.${s.id}`} aria-label={s.label} onClick={() => pickSection(t, `${t}.${s.id}`)} className="rail-btn">{s.icon}<span>{s.label}</span></button>
+                <button key={s.id} type="button" data-key={`${t}.${s.id}`} aria-pressed={open === `${t}.${s.id}`} aria-label={s.label} onClick={() => pickSection(t, `${t}.${s.id}`)} onPointerEnter={(e) => e.pointerType !== "touch" && setHover(`${t}.${s.id}`)} className="rail-btn">{s.icon}<span>{s.label}</span></button>
               ))}
             </div>
           ))}
