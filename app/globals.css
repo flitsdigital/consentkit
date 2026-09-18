@@ -139,7 +139,7 @@ textarea.field { @apply h-auto py-1.5 leading-snug; }
 .menu-item[aria-current="true"] { background: rgba(167, 139, 250, 0.18); }
 .auto-chip { background: rgba(255, 255, 255, 0.08); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12); }
 
-pre.code { @apply overflow-auto rounded-lg p-3 font-mono text-[11px] leading-relaxed text-fg/80; background: #111; box-shadow: var(--shadow-ring); }
+pre.code { @apply overflow-auto rounded-lg p-3 font-mono text-[11px] leading-relaxed text-fg/80 break-all whitespace-pre-wrap; background: #111; box-shadow: var(--shadow-ring); }
 
 @media (prefers-reduced-motion: reduce) {
   .btn, .seg > button, .menu { transition-duration: 0ms; }
@@ -163,3 +163,14 @@ pre.code { @apply overflow-auto rounded-lg p-3 font-mono text-[11px] leading-rel
 .float-panel { animation: float-in 180ms var(--ease-out-strong); }
 @keyframes float-in { from { opacity: 0; transform: translateY(6px) scale(0.98); } }
 @media (prefers-reduced-motion: reduce) { .float-panel { animation: none; } }
+
+.nav-item {
+  @apply flex h-8 w-full items-center gap-2 rounded-lg px-2 text-[13px] text-muted;
+  transition: color 150ms var(--ease-out-strong), background-color 150ms var(--ease-out-strong);
+}
+@media (hover: hover) and (pointer: fine) { .nav-item:hover { color: var(--color-fg); background: var(--color-raised); } }
+.nav-item[aria-current="true"] { color: var(--color-fg); background: var(--color-raised); box-shadow: var(--shadow-ring); }
+.step { @apply flex h-8 items-center gap-2 rounded-lg px-2 text-[13px] text-muted; transition: color 150ms var(--ease-out-strong); }
+.step-n { @apply flex size-5 items-center justify-center rounded-full font-mono text-[10px]; background: var(--color-raised); box-shadow: var(--shadow-ring); }
+.step[aria-current="step"] { color: var(--color-fg); }
+.step[aria-current="step"] .step-n { background: var(--color-accent); color: #fff; box-shadow: none; }

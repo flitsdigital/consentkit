@@ -185,8 +185,125 @@ export function FocusLayout(p: Parts) {
   );
 }
 
+
+/* ================= Ronde 2 ================= */
+const ALL_SECTIONS = TABS.flatMap(([t, name]) => SECTIONS[t].map((s) => ({ ...s, tab: t, tabName: name, key: `${t}.${s.id}` })));
+const PanelHeader = ({ crumb, title }: { crumb?: string; title: string }) => (
+  <div className="flex h-11 shrink-0 items-center border-b border-line px-4 text-[13px]">{crumb && <span className="text-muted">{crumb}&nbsp;/&nbsp;</span>}<span className="font-medium">{title}</span></div>
+);
+
+/* ---------- D — Rail + inspector: tabs boven, icoon-rail (met label) links kiest de sectie, vast rechterpaneel toont die sectie ---------- */
+export function RailInspectorLayout(p: Parts) {
+  const [tab, setTab] = useState<Tab>("stijl");
+  const [section, setSection] = useState("site");
+  const sections = SECTIONS[tab];
+  const active = sections.find((s) => s.id === section) ?? sections[0];
+  const pick = (t: Tab) => { setTab(t); setSection(SECTIONS[t][0].id); };
+  return (
+    <div className="grid h-full grid-cols-[64px_1fr_360px] grid-rows-[48px_1fr_48px]">
+      <header className="col-span-3 grid grid-cols-[1fr_auto_1fr] items-center border-b border-line px-4">
+        <Logo domain={p.domain} />
+        <Tabs tab={tab} onTab={pick} />
+        <div className="flex items-center justify-end gap-2">{p.shareBtn}<button type="button" className="btn btn-primary ps-3 pe-2.5" onClick={() => pick("installatie")}>Exporteren <Arrow /></button></div>
+      </header>
+      <nav className="flex flex-col items-center gap-1 border-r border-line bg-panel py-3" aria-label="Secties">
+        {sections.map((s) => (
+          <button key={s.id} type="button" aria-pressed={active.id === s.id} onClick={() => setSection(s.id)} className="rail-btn h-auto w-14 flex-col gap-1 py-2 text-[10px]">{s.icon}<span>{s.label}</span></button>
+        ))}
+      </nav>
+      <main className="canvas flex min-h-0 items-center justify-center overflow-auto p-8"><div className="w-full max-w-5xl">{p.preview}</div></main>
+      <aside className="row-span-2 flex min-h-0 flex-col border-l border-line bg-panel">
+        <PanelHeader crumb={TABS.find(([t]) => t === tab)![1]} title={active.label} />
+        <div className="min-h-0 flex-1 overflow-y-auto pt-2">{active.render(p)}</div>
+      </aside>
+      <footer className="col-span-2 flex items-center justify-between border-t border-line px-4">
+        <div className="flex items-center gap-2">{p.previewControls}</div>
+        <span className="font-mono text-[11px] text-muted">v{p.version}</span>
+      </footer>
+    </div>
+  );
+}
+
+/* ---------- E — Sidebar: geen tabs; linker sidebar met tekst-navigatie (groepen = tabs, items = secties), rechts inspector ---------- */
+export function SidebarLayout(p: Parts) {
+  const [open, setOpen] = useState("stijl.site");
+  const active = ALL_SECTIONS.find((s) => s.key === open) ?? ALL_SECTIONS[0];
+  return (
+    <div className="grid h-full grid-cols-[208px_1fr_360px] grid-rows-[48px_1fr_48px]">
+      <header className="col-span-3 flex items-center justify-between border-b border-line px-4">
+        <Logo domain={p.domain} />
+        <div className="flex items-center gap-2">{p.shareBtn}<button type="button" className="btn btn-primary ps-3 pe-2.5" onClick={() => setOpen("installatie.code")}>Exporteren <Arrow /></button></div>
+      </header>
+      <nav className="row-span-2 overflow-y-auto border-r border-line bg-panel p-3" aria-label="Onderdelen">
+        {TABS.map(([t, name]) => (
+          <div key={t} className="mb-4">
+            <div className="mb-1 px-2 text-[11px] font-medium tracking-wide text-muted uppercase">{name}</div>
+            {SECTIONS[t].map((s) => (
+              <button key={s.id} type="button" aria-current={open === `${t}.${s.id}`} onClick={() => setOpen(`${t}.${s.id}`)} className="nav-item">{s.icon}<span>{s.label}</span></button>
+            ))}
+          </div>
+        ))}
+      </nav>
+      <main className="canvas flex min-h-0 items-center justify-center overflow-auto p-8"><div className="w-full max-w-5xl">{p.preview}</div></main>
+      <aside className="row-span-2 flex min-h-0 flex-col border-l border-line bg-panel">
+        <PanelHeader crumb={active.tabName} title={active.label} />
+        <div className="min-h-0 flex-1 overflow-y-auto pt-2">{active.render(p)}</div>
+      </aside>
+      <footer className="flex items-center justify-between border-t border-line px-4">
+        <div className="flex items-center gap-2">{p.previewControls}</div>
+        <span className="font-mono text-[11px] text-muted">v{p.version}</span>
+      </footer>
+    </div>
+  );
+}
+
+/* ---------- F — Stappen: lineaire flow (Site → Stijl → Banner → Gedrag → Installatie), stap-inhoud links, canvas rechts, Vorige/Volgende onderin ---------- */
+const STEPS: { title: string; keys: string[] }[] = [
+  { title: "Site", keys: ["stijl.site"] },
+  { title: "Stijl", keys: ["stijl.kleuren", "stijl.typografie", "stijl.maten"] },
+  { title: "Banner", keys: ["banner.teksten", "banner.categorieen"] },
+  { title: "Gedrag", keys: ["gedrag.opslag"] },
+  { title: "Installatie", keys: ["installatie.code"] },
+];
+export function StepsLayout(p: Parts) {
+  const [step, setStep] = useState(0);
+  const cur = STEPS[step];
+  return (
+    <div className="grid h-full grid-cols-[400px_1fr] grid-rows-[48px_1fr_56px]">
+      <header className="col-span-2 grid grid-cols-[1fr_auto_1fr] items-center border-b border-line px-4">
+        <Logo domain={p.domain} />
+        <ol className="flex items-center gap-1" aria-label="Stappen">
+          {STEPS.map((s, i) => (
+            <li key={s.title} className="flex items-center gap-1">
+              {i > 0 && <span className="mx-1 h-px w-4 bg-line" />}
+              <button type="button" aria-current={i === step ? "step" : undefined} onClick={() => setStep(i)} className="step">
+                <span className="step-n">{i + 1}</span>{s.title}
+              </button>
+            </li>
+          ))}
+        </ol>
+        <div className="flex items-center justify-end gap-2">{p.shareBtn}</div>
+      </header>
+      <aside className="flex min-h-0 flex-col border-r border-line bg-panel">
+        <PanelHeader crumb={`Stap ${step + 1}`} title={cur.title} />
+        <div className="min-h-0 flex-1 overflow-y-auto pt-2">
+          {cur.keys.map((k) => { const s = ALL_SECTIONS.find((x) => x.key === k)!; return <div key={k}>{cur.keys.length > 1 && <div className="px-4 pt-3 pb-1 text-[11px] font-medium tracking-wide text-muted uppercase">{s.label}</div>}{s.render(p)}</div>; })}
+        </div>
+      </aside>
+      <main className="canvas flex min-h-0 items-center justify-center overflow-auto p-8"><div className="w-full max-w-5xl">{p.preview}</div></main>
+      <footer className="col-span-2 flex items-center justify-between border-t border-line px-4">
+        <div className="flex items-center gap-2">{p.previewControls}</div>
+        <div className="flex items-center gap-2">
+          <button type="button" className="btn" disabled={step === 0} onClick={() => setStep(step - 1)}>← Vorige</button>
+          <button type="button" className="btn btn-primary" disabled={step === STEPS.length - 1} onClick={() => setStep(step + 1)}>Volgende →</button>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
 /* ---------- Switcher (alleen dev) ---------- */
-const VARIANTS: [string, string][] = [["A", "Studio: rail + zwevend paneel"], ["B", "Inspector: één rechterpaneel"], ["C", "Focus: canvas + palette"]];
+const VARIANTS: [string, string][] = [["A", "Studio: rail + zwevend paneel"], ["B", "Inspector: één rechterpaneel"], ["C", "Focus: canvas + palette"], ["D", "Rail + inspector"], ["E", "Sidebar + inspector"], ["F", "Stappen"]];
 export function PrototypeSwitcher({ current }: { current: string }) {
   const router = useRouter();
   const i = Math.max(0, VARIANTS.findIndex(([k]) => k === current));

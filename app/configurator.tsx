@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ButtonGroup, ColorControl, Folder, Slider, TextControl, useDialKitController, type DialConfig } from "dialkit";
 import { parse } from "culori";
-import { FocusLayout, InspectorLayout, PrototypeSwitcher, StudioLayout, type Parts } from "./prototype-layouts";
+import { FocusLayout, InspectorLayout, PrototypeSwitcher, RailInspectorLayout, SidebarLayout, StepsLayout, StudioLayout, type Parts } from "./prototype-layouts";
 import { AUTO_VARS, COLOR_VARS, DEFAULTS, VAR_NAMES, contrast, deriveAuto, hex, keyFromUrl, mapToVars, renderCustomCss, toPx, type Extracted, type VarName, type Vars } from "@/lib/mapping";
 
 type Files = { customCss: string; classesCss: string; componentHtml: string; clipboardJson: string; headSnippet: string; version: string };
@@ -522,8 +522,8 @@ document.addEventListener("click", function (e) {
   );
 
   const parts: Parts = { domain, urlForm, errorLine, previewControls, shareBtn, foundPanel, generalTexts, categoryList, textsPanel, contrastStrip, styleFolders, stylePanel, behaviourPanel, exportPanel, preview, version: files.version, hasSite: !!extracted };
-  const variant = params.get("variant") ?? "A";
-  const Layout = { A: StudioLayout, B: InspectorLayout, C: FocusLayout }[variant] ?? StudioLayout;
+  const variant = params.get("variant") ?? "D";
+  const Layout = { A: StudioLayout, B: InspectorLayout, C: FocusLayout, D: RailInspectorLayout, E: SidebarLayout, F: StepsLayout }[variant] ?? RailInspectorLayout;
   return (
     <>
       <Layout {...parts} />
