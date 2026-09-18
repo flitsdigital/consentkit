@@ -185,3 +185,10 @@ pre.code { @apply overflow-auto rounded-lg p-3 font-mono text-[11px] leading-rel
 /* Hue-slider altijd verzadigd tonen (DialKit tekent hem in de lightness/chroma van de huidige kleur → bij donkere kleuren onleesbaar) */
 .dialkit-color-hue::-webkit-slider-runnable-track { background: linear-gradient(to right in oklch longer hue, oklch(0.72 0.19 0), oklch(0.72 0.19 360)); }
 .dialkit-color-hue::-moz-range-track { background: linear-gradient(to right in oklch longer hue, oklch(0.72 0.19 0), oklch(0.72 0.19 360)); }
+
+/* Starters */
+.starter { @apply rounded-xl p-1.5 text-left; box-shadow: var(--shadow-ring); transition: box-shadow 150ms var(--ease-out-strong), transform 160ms var(--ease-out-strong); }
+@media (hover: hover) and (pointer: fine) { .starter:hover { box-shadow: var(--shadow-ring-hover); } }
+.starter:active { transform: scale(0.97); }
+.starter-preview { @apply relative mb-1.5 block h-20 w-full overflow-hidden rounded-lg; }
+.starter-card { @apply absolute left-1/2 flex -translate-x-1/2 flex-col gap-1 p-2; height: 44px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18); }

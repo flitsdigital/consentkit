@@ -33,7 +33,7 @@ const DIAL: Record<string, { v: VarName; range?: [number, number, number?] }> = 
   "typografie.titel": { v: "--cb-font-size-title", range: [14, 40] },
   "maten.padding": { v: "--cb-padding", range: [8, 48] },
   "maten.offset": { v: "--cb-offset", range: [0, 48] },
-  "maten.maxBreedte": { v: "--cb-max-width", range: [320, 960, 10] },
+  "maten.maxBreedte": { v: "--cb-max-width", range: [320, 2000, 10] }, // 2000 = "volle breedte" (Balk-starter)
   "maten.kaartRadius": { v: "--cb-border-radius", range: [0, 40] },
   "maten.knopRadius": { v: "--cb-button-radius", range: [0, 32] },
   "maten.switchBreedte": { v: "--cb-switch-width", range: [32, 72] },
@@ -50,6 +50,15 @@ const easeCss = (e: EasingConfig) => `cubic-bezier(${e.ease.join(", ")})`;
 const SHADOW: Record<keyof Shadow, { label: string; range: [number, number, number?]; unit: string }> = { x: { label: "Schaduw x", range: [-40, 40], unit: "px" }, y: { label: "Schaduw y", range: [-40, 60], unit: "px" }, blur: { label: "Schaduw blur", range: [0, 120], unit: "px" }, opacity: { label: "Schaduw opacity", range: [0, 1, 0.01], unit: "" } };
 const effectConfig = (vars: Vars): DialConfig => { const sh = parseShadow(vars["--cb-shadow"]); return { ...Object.fromEntries(Object.entries(SHADOW).map(([k, d]) => [k, [sh[k as keyof Shadow], ...d.range]])), easing: parseEase(vars["--cb-ease"]), replay: { type: "action", label: "Speel switch-animatie af" } }; };
 type Fx = Shadow & { easing?: EasingConfig };
+// Starters: een patch op de huidige waarden. Kleuren die niet in de patch staan (bv. accent) blijven staan.
+const STARTERS: { name: string; hint: string; patch: Partial<Vars> }[] = [
+  { name: "Licht", hint: "Wit, rustig", patch: { "--cb-color": "#1b1b1b", "--cb-color-background": "#ffffff", "--cb-border-radius": "12px", "--cb-button-radius": "8px", "--cb-padding": "24px", "--cb-shadow": "0px 12px 40px rgba(0, 0, 0, 0.18)" } },
+  { name: "Donker", hint: "Donkere kaart", patch: { "--cb-color": "#f2f2f2", "--cb-color-background": "#141414", "--cb-border-radius": "12px", "--cb-button-radius": "8px", "--cb-shadow": "0px 16px 48px rgba(0, 0, 0, 0.5)" } },
+  { name: "Zacht", hint: "Ronde hoeken, pill-knoppen", patch: { "--cb-border-radius": "24px", "--cb-button-radius": "32px", "--cb-padding": "28px", "--cb-switch-height": "28px", "--cb-switch-width": "50px", "--cb-shadow": "0px 20px 60px rgba(0, 0, 0, 0.12)" } },
+  { name: "Strak", hint: "Geen radius, harde lijnen", patch: { "--cb-border-radius": "0px", "--cb-button-radius": "0px", "--cb-padding": "24px", "--cb-shadow": "0px 2px 8px rgba(0, 0, 0, 0.1)" } },
+  { name: "Kaart", hint: "Layout: kaart onderin", patch: { "--cb-max-width": "560px", "--cb-offset": "16px" } },
+  { name: "Balk", hint: "Layout: volle breedte", patch: { "--cb-max-width": "2000px", "--cb-offset": "0px", "--cb-border-radius": "0px" } },
+];
 // Toets vasthouden + scrollen/slepen tunet de slider zonder naar het paneel te kijken
 const NO_PRESETS: Preset[] = [];
 const SHORTCUTS: Record<string, ShortcutConfig> = { "maten.padding": { key: "p" }, "maten.offset": { key: "o" }, "maten.kaartRadius": { key: "r" }, "maten.knopRadius": { key: "k" }, "typografie.tekst": { key: "t" }, "effect.blur": { key: "b" } };
@@ -363,6 +372,30 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
       <ButtonGroup buttons={[{ label: "Speel switch-animatie af", onClick: replay }]} />
     </div>
   );
+  const applyStarter = (patch: Partial<Vars>) => {
+    dial.setValues(toDial({ ...resolved, ...patch }) as DialValues);
+    setBindings((b) => { const n = { ...b }; for (const k of Object.keys(patch)) delete n[k as VarName]; for (const a of AUTO_VARS) if (!(a in patch)) n[a] = "auto"; return n; });
+  };
+  const starters = (
+    <div className="px-3 pb-4">
+      <p className="mb-3 text-[11px] leading-relaxed text-muted">Startpunt kiezen; accent en teksten blijven staan. Daarna verder tunen bij Kleuren/Maten.</p>
+      <div className="grid grid-cols-2 gap-2">
+        {STARTERS.map((t) => { const v = { ...resolved, ...t.patch }; const r = Math.min(toPx(v["--cb-border-radius"]) ?? 12, 14) / 2; const br = Math.min(toPx(v["--cb-button-radius"]) ?? 8, 12) / 2; return (
+          <button key={t.name} type="button" onClick={() => applyStarter(t.patch)} className="starter">
+            <span className="starter-preview" style={{ background: `color-mix(in srgb, ${v["--cb-color"]} 8%, ${v["--cb-color-background"]})` }}>
+              <span className="starter-card" style={{ background: v["--cb-color-background"], borderRadius: r, width: t.name === "Balk" ? "100%" : "78%", bottom: t.name === "Balk" ? 0 : 6, ...(t.name === "Balk" ? { borderRadius: 0 } : {}) }}>
+                <i style={{ background: v["--cb-color"], width: "55%", height: 3, borderRadius: 2 }} />
+                <i style={{ background: v["--cb-color"], opacity: 0.35, width: "85%", height: 2, borderRadius: 2 }} />
+                <span className="mt-auto flex justify-end gap-1"><i style={{ background: v["--cb-color-accent"], width: 14, height: 6, borderRadius: br }} /><i style={{ background: v["--cb-color-accent"], width: 18, height: 6, borderRadius: br }} /></span>
+              </span>
+            </span>
+            <span className="block text-[12px] font-medium">{t.name}</span>
+            <span className="block text-[10px] text-muted">{t.hint}</span>
+          </button>
+        ); })}
+      </div>
+    </div>
+  );
   const versions = (
     <div className="dialkit-root px-3 pb-2" data-theme="dark">
       <PresetManager panelId="banner" presets={presets} activePresetId={activePreset} onAdd={() => DialStore.saveNewPreset("banner")} />
@@ -540,7 +573,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
     />
   );
 
-  const parts: Parts = { domain, urlForm, errorLine, previewControls, shareBtn, foundPanel, generalTexts, categoryList, contrastStrip, versions, styleFolders, behaviourPanel, exportPanel, preview, version: files.version };
+  const parts: Parts = { domain, urlForm, errorLine, previewControls, shareBtn, foundPanel, generalTexts, categoryList, contrastStrip, versions, starters, styleFolders, behaviourPanel, exportPanel, preview, version: files.version };
   return (
     <>
       <Studio {...parts} />
