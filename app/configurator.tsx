@@ -2,10 +2,11 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
-import { ButtonGroup, ColorControl, DialRoot, DialStore, Folder, PresetManager, SelectControl, Slider, TextControl, Toggle, TransitionControl, useDialKitController, type DialConfig, type EasingConfig, type Preset, type ShortcutConfig } from "dialkit";
+import { ButtonGroup, ColorControl, DialRoot, DialStore, Folder, PresetManager, Slider, TextControl, Toggle, TransitionControl, useDialKitController, type DialConfig, type EasingConfig, type Preset, type ShortcutConfig } from "dialkit";
 import { formatRgb, parse } from "culori";
 import { Studio, type Parts } from "./studio";
-import { AUTO_VARS, COLOR_VARS, DEFAULTS, VAR_NAMES, contrast, deriveAuto, hex, keyFromUrl, mapToVars, renderCustomCss, toPx, type Extracted, type VarName, type Vars } from "@/lib/mapping";
+import GlideSelect from "./glide-select";
+import { AUTO_VARS, COLOR_VARS, DEFAULTS, VAR_NAMES, contrast, deriveAuto, hex, keyFromUrl, mapToVars, opaque, renderCustomCss, toPx, type Extracted, type VarName, type Vars } from "@/lib/mapping";
 
 type Files = { customCss: string; classesCss: string; componentHtml: string; clipboardJson: string; headSnippet: string; version: string };
 type WfNode = { _id: string; text?: boolean; v?: string; children?: string[]; data?: { xattr?: { name: string; value: string }[]; link?: { mode: string; url: string } } };
@@ -123,6 +124,11 @@ export function Configurator({ files }: { files: Files }) {
   const [mobile, setMobile] = useState(false);
   const [siteBg, setSiteBg] = useState(false);
   const [copied, setCopied] = useState("");
+  // Afgevinkte exportstappen, extractie-samenvatting, undo-stack
+  const [done, setDone] = useState<string[]>([]);
+  const [summary, setSummary] = useState<string | null>(null);
+  const history = useRef<DialValues[]>([]);
+  const skipHistory = useRef(false);
   // Categorie slepen met pointer events (geen HTML5-DnD: werkt ook op touch en is te testen)
   const [drag, setDrag] = useState<{ from: number | null; over: number | null }>({ from: null, over: null });
   const startDrag = (from: number) => (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -164,6 +170,28 @@ export function Configurator({ files }: { files: Files }) {
   const values = dial.values as unknown as DialValues;
   const resolved = useMemo(() => toVars(values), [values]); // altijd hex/px: preview + contrast
   const vars = useMemo(() => ({ ...resolved, ...Object.fromEntries(Object.entries(bindings).filter(([, v]) => v !== "auto").map(([n, v]) => [n, `var(${v})`])) }) as Vars, [resolved, bindings]); // export
+  // Undo (⌘Z) op DialKit-waarden — snapshot na 400 ms rust
+  useEffect(() => {
+    if (skipHistory.current) { skipHistory.current = false; return; }
+    const t = setTimeout(() => { const last = history.current.at(-1); if (JSON.stringify(last) !== JSON.stringify(values)) history.current.push(structuredClone(values)); if (history.current.length > 50) history.current.shift(); }, 400);
+    return () => clearTimeout(t);
+  }, [values]);
+  const undo = () => {
+    if (history.current.length < 2) return;
+    history.current.pop();
+    skipHistory.current = true;
+    dial.setValues(structuredClone(history.current.at(-1)!) as never);
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key !== "z" || (e.target as HTMLElement).closest?.("input, textarea")) return;
+      e.preventDefault();
+      undo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Auto-kleuren volgen tekst/achtergrond/accent
   useEffect(() => {
     const auto = deriveAuto(resolved);
@@ -200,6 +228,10 @@ export function Configurator({ files }: { files: Files }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       setExtracted(json);
+      const ex = json as Extracted;
+      const accent = mapToVars(ex)["--cb-color-accent"];
+      const brand = ex.variables.find((v) => !v.name.startsWith("--cb-") && opaque(v.value) === accent);
+      setSummary(`${ex.colors.length} kleuren, ${ex.variables.length} variabelen, ${ex.radii.length} radii gevonden${brand ? ` · accent uit ${shortName(brand.name)}` : ""}`);
       const found = new Map((json as Extracted).variables.map((v) => [v.name, v.value]));
       for (const [n, name] of Object.entries(bindings)) if (found.has(name)) dial.setValue(PATH_OF[n as VarName], hex(found.get(name)!));
       if (apply) {
@@ -295,7 +327,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
 </script></body></html>`;
 
   function flash(name: string) { setCopied(name); setTimeout(() => setCopied(""), 1600); }
-  async function copy(name: string, text: string) { await navigator.clipboard.writeText(text); flash(name); }
+  async function copy(name: string, text: string) { await navigator.clipboard.writeText(text); flash(name); setDone((d) => [...new Set([...d, name])]); }
   // Webflow accepteert alleen clipboard-data met MIME-type application/json (zelfde truc als demo/index.html)
   function copyToWebflow() {
     const json = clipboardJson();
@@ -304,6 +336,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
     document.execCommand("copy");
     document.removeEventListener("copy", onCopy);
     flash("webflow");
+    setDone((d) => [...new Set([...d, "webflow"])]);
   }
 
   const copyBtn = (name: string, text: string) => (
@@ -342,7 +375,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
           <div className="min-w-0 flex-1"><ColorControl label={label(d.key)} value={String(values[d.folder]?.[d.key] ?? "#000000")} onChange={(v) => dial.setValue(path, v)} /></div>
         )}
         {!bound && <button type="button" popoverTarget={id} className="var-btn" title="Variabele van de site" aria-label="Variabele kiezen" disabled={!siteVars.length}><VarIcon /></button>}
-        <div id={id} popover="auto" className="menu w-64" style={{ positionArea: "bottom span-left" }}>
+        <div id={id} popover="auto" className="menu menu-right w-64">
           <input type="search" value={varQuery} onChange={(e) => setVarQuery(e.target.value)} placeholder="Zoek variabele…" className="field mb-1 h-7 text-xs" />
           <div className="max-h-64 overflow-y-auto">
             {(AUTO_VARS as readonly string[]).includes(d.v) && !q && (
@@ -415,7 +448,7 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
   const toggleHide = (a: Hidden, on: boolean) => setHide((h) => { const linked: Hidden[] = a === "settings" ? [a, "save"] : [a]; return on ? h.filter((x) => !linked.includes(x)) : [...new Set([...h, ...linked])]; });
   const layoutPanel = (
     <div className="flex flex-col gap-1.5">
-      <SelectControl label="Uitlijning" value={align} options={[{ value: "links", label: "Links" }, { value: "midden", label: "Midden" }, { value: "rechts", label: "Rechts" }]} onChange={(v) => setAlign(v as Align)} />
+      <div className="gs-row"><span>Uitlijning</span><GlideSelect ariaLabel="Uitlijning" value={align} options={[{ value: "links", label: "Links", tag: "margin-left 0" }, { value: "midden", label: "Midden", tag: "standaard" }, { value: "rechts", label: "Rechts", tag: "margin-right 0" }]} onChange={(v) => setAlign(v as Align)} size="sm" align="right" menuWidth={200} /></div>
       <Toggle label="Knop: instellingen" checked={!hide.includes("settings")} onChange={(on) => toggleHide("settings", on)} />
       <Toggle label="Knop: weigeren" checked={!hide.includes("reject")} onChange={(on) => toggleHide("reject", on)} />
     </div>
@@ -447,10 +480,32 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
     </>
   );
   const shareBtn = <button type="button" className="btn btn-ghost" onClick={() => copy("link", location.href)}>{copied === "link" ? <><Check /> Link gekopieerd</> : "Deel link"}</button>;
+  const roleOf = (c: string) => (c === hex(extracted?.body.color ?? "") ? "tekstkleur van de site" : c === hex(extracted?.body.background ?? "") ? "achtergrond van de site" : c === resolved["--cb-color-accent"] ? "gebruikt als accent" : undefined);
+  const extractStatus = status.loading ? (
+    <div className="rounded-xl p-3 text-xs text-muted" style={{ boxShadow: "var(--shadow-ring)" }}><div className="flex items-center gap-2 text-fg"><Spinner /> Stijl ophalen…</div><div className="mt-1">HTML en stylesheets lezen, kleuren en variabelen sorteren. Meestal 1–3 s.</div></div>
+  ) : status.error ? (
+    <div className="rounded-xl p-3 text-xs" style={{ boxShadow: "0 0 0 1px oklch(0.65 0.2 25 / 0.5)" }}><div className="font-medium text-red-300">Ophalen mislukt</div><div className="mt-1 text-muted">{status.error}. De site blokkeert misschien geautomatiseerde toegang, of de URL klopt niet.</div><button type="button" className="btn mt-2 h-7 text-xs" onClick={() => extract(url, true)}>Opnieuw proberen</button></div>
+  ) : summary ? (
+    <div className="flex items-start gap-2 rounded-xl p-3 text-xs text-muted" style={{ boxShadow: "var(--shadow-ring)" }}><span className="text-emerald-300"><Check /></span><span>{summary}</span></div>
+  ) : null;
   const foundPanel = !extracted ? (
     <p className="px-1 pt-6 text-center text-xs leading-relaxed text-muted">Plak een URL en klik <em>Stijl ophalen</em>. Kleuren, radii en font-sizes van de site verschijnen hier.</p>
   ) : (
     <div className="space-y-5">
+      <Section title="Belangrijkste kleuren">
+          <div className="grid grid-cols-2 gap-1.5">
+            {extracted.colors.slice(0, 6).map((c, i) => (
+              <span key={c.value} className="relative">
+                <button type="button" popoverTarget={`k${i}`} className="starter w-full p-2 text-left">
+                  <span className="swatch mb-1.5 block h-9 w-full rounded-md" style={{ background: c.value }} />
+                  <span className="block font-mono text-[11px]">{c.value} <span className="text-muted">{c.count}×</span></span>
+                  <span className="block truncate text-[10px] text-muted">{roleOf(c.value) ?? (i === 0 ? "meest gebruikt" : "\u00a0")}</span>
+                </button>
+                {menuFor(`k${i}`, COLOR_TARGETS, c.value)}
+              </span>
+            ))}
+          </div>
+        </Section>
       <Section title="Kleuren" hint={`${extracted.colors.length}`}>
         <div className="grid grid-cols-6 gap-1.5">
           {extracted.colors.slice(0, 36).map((c, i) => (
@@ -573,15 +628,71 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
       <p className="px-3 pt-3 text-[11px] leading-relaxed text-muted">Consent Mode v2-signalen per categorie stel je in bij <em>Banner → Categorieën</em>.</p>
     </>
   );
+  const steps = ["css", "head", "footer", "webflow"];
   const exportPanel = (
     <div className="space-y-4 px-3 pb-4">
-      <Step n={1} title="custom.css" sub="Site settings → Custom code → Head" action={copyBtn("css", exportCss)}><pre className="code max-h-44">{exportCss}</pre></Step>
+      <div className="flex items-center gap-1.5 text-[11px] text-muted">
+          {steps.map((k, i) => <span key={k} className={`flex size-5 items-center justify-center rounded-full ${done.includes(k) ? "bg-emerald-400/20 text-emerald-300" : "bg-raised"}`}>{done.includes(k) ? <Check /> : i + 1}</span>)}
+          <span className="ml-1">{done.filter((d) => steps.includes(d)).length}/{steps.length} in Webflow geplakt</span>
+        </div>
+      <Step n={1} done={done.includes("css")} title="custom.css" sub="Site settings → Custom code → Head" action={copyBtn("css", exportCss)}><pre className="code max-h-44">{exportCss}</pre></Step>
       {exportAlign && <Step n={1} title="Uitlijning" sub="Onder custom.css plakken (buiten de source-repo)" action={copyBtn("align", exportAlign)}><pre className="code">{exportAlign}</pre></Step>}
-      <Step n={2} title="Head-code" sub="Boven GTM" action={copyBtn("head", headCode)}><pre className="code max-h-32">{headCode}</pre></Step>
-      <Step n={3} title="Footer-code" sub={`v${files.version}`} action={copyBtn("footer", footerCode)}><pre className="code">{footerCode}</pre></Step>
-      <Step n={4} title="Component" sub="Plak met ⌘V in de Webflow Designer">
+      <Step n={2} done={done.includes("head")} title="Head-code" sub="Boven GTM" action={copyBtn("head", headCode)}><pre className="code max-h-32">{headCode}</pre></Step>
+      <Step n={3} done={done.includes("footer")} title="Footer-code" sub={`v${files.version}`} action={copyBtn("footer", footerCode)}><pre className="code">{footerCode}</pre></Step>
+      <Step n={4} done={done.includes("webflow")} title="Component" sub="Plak met ⌘V in de Webflow Designer">
         <button type="button" onClick={copyToWebflow} className="btn btn-primary h-9 w-full">{copied === "webflow" ? <><Check /> Gekopieerd – plak in de Designer</> : "Copy to Webflow"}</button>
       </Step>
+      <Step n={5} title="Testen" sub="Publiceer in Webflow en open de site">
+          <div className="flex gap-2">
+            <a href={url || "#"} target="_blank" rel="noreferrer" className="btn flex-1" aria-disabled={!url}>Open site <Arrow /></a>
+            <a href="https://tagassistant.google.com" target="_blank" rel="noreferrer" className="btn flex-1">Tag Assistant <Arrow /></a>
+          </div>
+          <p className="mt-2 text-[11px] leading-relaxed text-muted">Check: banner verschijnt, ‘Weigeren’ zet alles op denied, na keuze geen banner meer. Cookie-instellingen-link in de footer opent hem weer.</p>
+        </Step>
+    </div>
+  );
+  // Export als checklist-menu in de topbar. Klik = kopiëren + afvinken (menu blijft open).
+  const checkItems: [string, string, string, () => void][] = [
+    ["webflow", "Copy to Webflow", "component", copyToWebflow],
+    ["css", "custom.css", "head", () => copy("css", exportCss)],
+    ["head", "Head-code", "boven GTM", () => copy("head", headCode)],
+    ["footer", "Footer-code", "footer", () => copy("footer", footerCode)],
+  ];
+  const doneCount = checkItems.filter(([k]) => done.includes(k)).length;
+  const [row, setRow] = useState<number | null>(null); // glijdende pill in het export-menu
+  const exportMenu = (
+    <div id="export-menu" popover="auto" className="menu menu-right w-64">
+      <div className="menu-title flex items-center justify-between">Installatie <span className="font-mono normal-case">{doneCount}/{checkItems.length}</span></div>
+      <div className="check-list" onPointerLeave={() => setRow(null)}>
+        <span className="check-pill" aria-hidden style={{ transform: `translateY(${(row ?? 0) * 33}px)`, opacity: row === null ? 0 : 1 }} />
+        {checkItems.map(([k, lbl, hint, act], i) => (
+          <button key={k} type="button" className="menu-item check-item" data-done={done.includes(k)} onClick={act} onPointerEnter={() => setRow(i)}>
+            <span className="check" aria-hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 8.5l3 3 6.5-6.5" /></svg></span>
+            <span className="check-label flex-1">{lbl}</span>
+            <span className="check-hint text-[10px] text-muted">{done.includes(k) ? (copied === k ? "Gekopieerd" : "Klaar") : hint}</span>
+          </button>
+        ))}
+      </div>
+      <div className="my-1 h-px bg-line" />
+      <button type="button" className="menu-item" popoverTarget="export-menu" popoverTargetAction="hide" onClick={() => window.dispatchEvent(new CustomEvent("consentkit:open", { detail: "installatie" }))}><span className="flex-1">Alle stappen bekijken</span><span className="text-muted">→</span></button>
+    </div>
+  );
+  // Lege staat op het canvas
+  const emptyState = (
+    <div className="mx-auto w-full max-w-lg rounded-2xl bg-panel p-6" style={{ boxShadow: "var(--shadow-pop)" }}>
+      <h2 className="text-[15px] font-semibold">Nieuwe cookiebanner</h2>
+      <p className="mt-1 mb-4 text-xs leading-relaxed text-muted">Plak de URL van de site. We halen kleuren, radius en font-sizes op en zetten de banner in de huisstijl.</p>
+      {urlForm}
+      <div className="mt-3">{extractStatus}</div>
+      <div className="mt-5 mb-2 text-[11px] font-medium tracking-wide text-muted uppercase">Of begin met een opzet</div>
+      <div className="grid grid-cols-4 gap-2">
+        {STARTERS.map((t) => (
+          <button key={t.name} type="button" onClick={() => { applyLayout(t.layout); setSummary(""); }} className="starter">
+            <span className="starter-preview" style={{ background: "#e9e9e9", height: 48 }}><span className="starter-card" style={{ background: "#fff", borderRadius: t.name === "Balk" ? 0 : 5, width: t.name === "Balk" ? "100%" : "78%", bottom: t.name === "Balk" ? 0 : 4, height: 28, padding: 5, gap: 3 }}><i style={{ background: "#333", width: "50%", height: 2 }} /><span className="mt-auto flex justify-end gap-1"><i style={{ background: "#999", width: 10, height: 4, borderRadius: 1 }} /></span></span></span>
+            <span className="block text-[11px] font-medium">{t.name}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
   const preview = (
@@ -595,7 +706,8 @@ addEventListener("message", function (e) { if (e.data && e.data.cb === "replay")
     />
   );
 
-  const parts: Parts = { domain, urlForm, errorLine, previewControls, shareBtn, foundPanel, generalTexts, categoryList, contrastStrip, versions, starters, styleFolders, behaviourPanel, exportPanel, preview, version: files.version };
+  const parts: Parts = { domain, urlForm, errorLine, previewControls, shareBtn, foundPanel, generalTexts, categoryList, contrastStrip, versions, starters, styleFolders, behaviourPanel, exportPanel, preview, version: files.version,
+    extractStatus, exportMenu, doneCount, doneTotal: checkItems.length, emptyState: !extracted && summary === null ? emptyState : null, artboard: mobile ? "Mobiel · 390 × 720" : "Desktop · 1024 × 640", undo };
   return (
     <>
       <Studio {...parts} />
@@ -613,11 +725,11 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
     </section>
   );
 }
-function Step({ n, title, sub, action, children }: { n: number; title: string; sub: string; action?: React.ReactNode; children: React.ReactNode }) {
+function Step({ n, done, title, sub, action, children }: { n: number; done?: boolean; title: string; sub: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section>
       <div className="mb-2 flex items-center gap-2">
-        <span className="flex size-5 items-center justify-center rounded-full bg-raised font-mono text-[10px]">{n}</span>
+        <span className={`flex size-5 items-center justify-center rounded-full font-mono text-[10px] ${done ? "bg-emerald-400/20 text-emerald-300" : "bg-raised"}`}>{done ? <Check /> : n}</span>
         <div className="min-w-0 flex-1 leading-tight"><div className="text-[13px] font-medium">{title}</div><div className="truncate text-[11px] text-muted">{sub}</div></div>
         {action}
       </div>
@@ -626,6 +738,7 @@ function Step({ n, title, sub, action, children }: { n: number; title: string; s
   );
 }
 const Grip = () => <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" aria-hidden><circle cx="2.5" cy="2" r="1.3" /><circle cx="7.5" cy="2" r="1.3" /><circle cx="2.5" cy="7" r="1.3" /><circle cx="7.5" cy="7" r="1.3" /><circle cx="2.5" cy="12" r="1.3" /><circle cx="7.5" cy="12" r="1.3" /></svg>;
+const Arrow = () => <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12L12 4M6 4h6v6" /></svg>;
 const Check = () => <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3 7-7" /></svg>;
 const VarIcon = () => <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" /></svg>;
 const Unlink = () => <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 9.5l3-3M9 4l1-1a2.5 2.5 0 0 1 3.5 3.5l-1 1M7 12l-1 1a2.5 2.5 0 0 1-3.5-3.5l1-1M3 3l10 10" /></svg>;
