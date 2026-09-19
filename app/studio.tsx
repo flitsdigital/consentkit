@@ -2,6 +2,8 @@
 // Studio-layout: tabs boven (Banner/Gedrag/Stijl/Installatie), vaste icoon-rail links, zwevend paneel, canvas, onderbalk.
 // Gekozen uit prototypes (branches prototype/layout en prototype/mobbin).
 
+import Link from "next/link";
+import { SiteSwitcher } from "./account";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Folder } from "dialkit";
 
@@ -124,7 +126,7 @@ export function Studio(p: Parts) {
   return (
     <div className="grid h-full grid-rows-[48px_1fr_48px]">
       <header className="grid grid-cols-[1fr_auto_1fr] items-center border-b border-line px-4">
-        <div className="flex items-center gap-2 text-[13px]"><Cookie /><span className="font-semibold tracking-tight">consentkit</span><span className="text-muted">/</span><span className="truncate text-muted">{p.domain}</span></div>
+        <div className="flex items-center gap-2 text-[13px]"><Link href="/sites" className="flex items-center gap-2"><Cookie /><span className="font-semibold tracking-tight">consentkit</span></Link><span className="text-muted">/</span><SiteSwitcher domain={p.domain} /></div>
         <SlidingTabs tab={tab} onTab={pickTab} />
         <div className="flex items-center justify-end gap-2">
           <button type="button" className="btn btn-ghost h-8 w-9 px-0" title="Ongedaan maken (⌘Z)" aria-label="Ongedaan maken" onClick={p.undo}><Icon.Undo /></button>
