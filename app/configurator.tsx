@@ -447,13 +447,13 @@ addEventListener("message", function (e) {
           <input type="search" value={varQuery} onChange={(e) => setVarQuery(e.target.value)} placeholder="Zoek variabele…" className="field mb-1 h-7 text-xs" />
           <div className="max-h-64 overflow-y-auto">
             {(AUTO_VARS as readonly string[]).includes(d.v) && !q && (
-              <button type="button" className="menu-item" popoverTarget={id} popoverTargetAction="hide" onClick={() => bind(d.v, "auto", auto[d.v as (typeof AUTO_VARS)[number]])} aria-current={bound === "auto"}>
+              <button type="button" className="menu-item" data-var popoverTarget={id} popoverTargetAction="hide" onClick={() => bind(d.v, "auto", auto[d.v as (typeof AUTO_VARS)[number]])} aria-current={bound === "auto"}>
                 <span className="swatch size-4 shrink-0 rounded" style={{ background: auto[d.v as (typeof AUTO_VARS)[number]] }} />
                 <span className="text-[12px]">Auto</span><span className="ml-auto text-[10px] text-muted">afgeleid</span>
               </button>
             )}
             {siteVars.filter((v) => !q || v.name.toLowerCase().includes(q) || v.value.includes(q)).map((v) => (
-              <button key={v.name} type="button" className="menu-item" popoverTarget={id} popoverTargetAction="hide" title={v.name} onClick={() => bind(d.v, v.name as Binding, v.value)} aria-current={bound === v.name}>
+              <button key={v.name} type="button" className="menu-item" data-var popoverTarget={id} popoverTargetAction="hide" title={v.name} onClick={() => bind(d.v, v.name as Binding, v.value)} aria-current={bound === v.name}>
                 <span className="swatch size-4 shrink-0 rounded" style={{ background: v.value }} />
                 <span className="truncate font-mono text-[11px]">{shortName(v.name)}</span>
                 <span className="ml-auto shrink-0 font-mono text-[10px] text-muted">{hex(v.value)}</span>

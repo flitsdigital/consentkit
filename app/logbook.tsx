@@ -49,7 +49,7 @@ const Kpis = ({ rows, prev, days }: ReturnType<typeof useLog>) => (
   </div>
 );
 const PeriodSeg = ({ p, set }: { p: Period; set: (p: Period) => void }) => <div className="seg shrink-0 whitespace-nowrap">{(Object.keys(PERIODS).map(Number) as Period[]).map((k) => <button key={k} type="button" aria-pressed={p === k} onClick={() => set(k)}>{PERIODS[k]}</button>)}</div>;
-const LiveBtn = ({ on, set }: { on: boolean; set: (v: boolean) => void }) => <button type="button" className="btn h-7 gap-1.5 px-2.5 text-xs" aria-pressed={on} onClick={() => set(!on)} style={on ? { boxShadow: "0 0 0 1px oklch(0.8 0.17 150 / 0.5)" } : undefined}><span className={`size-1.5 rounded-full ${on ? "animate-pulse bg-emerald-400" : "bg-muted"}`} />Live</button>;
+const LiveBtn = ({ on, set }: { on: boolean; set: (v: boolean) => void }) => <button type="button" className="btn h-7 gap-1.5 px-2.5 text-xs" aria-pressed={on} onClick={() => set(!on)} style={on ? { boxShadow: "0 0 0 1px color-mix(in oklab, var(--color-emerald-400) 50%, transparent)" } : undefined}><span className={`size-1.5 rounded-full ${on ? "animate-pulse bg-emerald-400" : "bg-muted"}`} />Live</button>;
 const Dot = ({ a }: { a: Act }) => <span className={`size-1.5 shrink-0 rounded-full ${ACTION[a][1]}`} />;
 
 function Chips({ f, set }: { f: Record<string, string>; set: (f: Record<string, string>) => void }) {

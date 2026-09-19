@@ -52,7 +52,7 @@ export function Sidebar({ children }: { children: ReactNode }) {
         <nav className="flex flex-col gap-0.5">
           {(Object.keys(PAGES) as Page[]).map((p) => <Link key={p} href={`/${p}`} className="menu-item text-[14px]" aria-current={path === `/${p}`}>{PAGES[p]}{p === "sites" && <span className="ml-auto font-mono text-[11px] text-muted">{SITES.length}</span>}</Link>)}
         </nav>
-        <div className="mt-auto flex items-center gap-2 px-2 text-xs"><Avatar initials={USER.initials} size={24} /><span className="min-w-0 flex-1 truncate">{USER.name}</span><Link href="/login" className="btn btn-ghost h-7 px-2 text-[11px]">Uit</Link></div>
+        <div className="mt-auto flex items-center gap-2 px-2 text-xs"><Avatar initials={USER.initials} size={24} /><span className="min-w-0 flex-1 truncate">{USER.name}</span><Link href="/login" className="btn btn-ghost h-7 px-2 text-[11px]">Uitloggen</Link></div>
       </aside>
       {children}
     </div>
