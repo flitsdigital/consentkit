@@ -1,5 +1,6 @@
 "use client";
 
+import { InstallCheck } from "./install-check";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 import { ButtonGroup, ColorControl, DialRoot, DialStore, EasingVisualization, Folder, PresetManager, Slider, TextControl, Toggle, useDialKitController, type DialConfig, type EasingConfig, type Preset, type ShortcutConfig } from "dialkit";
@@ -724,12 +725,13 @@ addEventListener("message", function (e) {
       <Step n={4} done={done.includes("webflow")} title="Component" sub="Plak met ⌘V in de Webflow Designer">
         <button type="button" onClick={copyToWebflow} className="btn btn-primary h-9 w-full">{copied === "webflow" ? <><Check /> Gekopieerd – plak in de Designer</> : "Copy to Webflow"}</button>
       </Step>
-      <Step n={5} title="Testen" sub="Publiceer in Webflow en open de site">
-          <div className="flex gap-2">
+      <Step n={5} title="Controleren" sub="Publiceer in Webflow, dan hier checken">
+          <InstallCheck url={url} siteKey={slug(key)} privacy={privacy} />
+          <div className="mt-2 flex gap-2">
             <a href={url || "#"} target="_blank" rel="noreferrer" className="btn flex-1" aria-disabled={!url}>Open site <Arrow /></a>
             <a href="https://tagassistant.google.com" target="_blank" rel="noreferrer" className="btn flex-1">Tag Assistant <Arrow /></a>
           </div>
-          <p className="mt-2 text-[11px] leading-relaxed text-muted">Check: banner verschijnt, ‘Weigeren’ zet alles op denied, na keuze geen banner meer. Cookie-instellingen-link in de footer opent hem weer.</p>
+          <p className="mt-2 text-[11px] leading-relaxed text-muted">In Tag Assistant: ‘Weigeren’ zet alles op denied, ‘Alles accepteren’ geeft een Consent Update met granted.</p>
         </Step>
       </>}
     </div>

@@ -52,3 +52,18 @@ export const Field = ({ label, children }: { label: string; children: ReactNode 
 );
 
 export const Google = () => <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden><path fill="currentColor" d="M21.35 11.1H12v2.9h5.4c-.5 2.5-2.6 3.9-5.4 3.9a6 6 0 1 1 0-12c1.5 0 2.9.6 3.9 1.5l2.1-2.1A9 9 0 1 0 12 21c5.2 0 8.7-3.6 8.7-8.8 0-.4 0-.8-.1-1.1z" /></svg>;
+
+// Nep-logboek: deterministisch per site (seed op id), zodat het er per site anders uitziet maar stabiel is.
+export type LogRow = { at: Date; action: "accept" | "reject" | "custom"; cats: string[]; version: number; id: string };
+export function logFor(site: Site, n = 40): LogRow[] {
+  if (site.status !== "live") return [];
+  let x = [...site.id].reduce((a, c) => a + c.charCodeAt(0), 0);
+  const rnd = () => ((x = (x * 9301 + 49297) % 233280) / 233280);
+  let t = Date.now();
+  return Array.from({ length: n }, () => {
+    const r = rnd();
+    t -= 3.6e6 * (0.2 + rnd() * 1.6);
+    const action = r < site.accept / 100 ? "accept" : r < 0.9 ? "reject" : "custom";
+    return { at: new Date(t), action, cats: action === "accept" ? ["analytics", "marketing"] : action === "custom" ? ["analytics"] : [], version: 1, id: Math.floor(rnd() * 0xffffffff).toString(16).padStart(8, "0") + "-" + Math.floor(rnd() * 0xffff).toString(16).padStart(4, "0") } as LogRow;
+  });
+}

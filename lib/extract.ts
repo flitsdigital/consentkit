@@ -25,7 +25,7 @@ async function assertPublic(url: URL) {
 }
 
 // Redirects handmatig volgen zodat elke hop door assertPublic gaat
-async function fetchText(url: URL, signal: AbortSignal, hops = 0): Promise<string> {
+export async function fetchText(url: URL, signal: AbortSignal, hops = 0): Promise<string> {
   await assertPublic(url);
   const res = await fetch(url, { signal, redirect: "manual", headers: { "user-agent": "Mozilla/5.0 (compatible; consent-config)" } });
   const location = res.headers.get("location");

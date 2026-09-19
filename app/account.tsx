@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { Avatar, Field, Google, INVOICES, MEMBERS, Mini, ORG, PAGES, SITES, Status, USER, type Page, type Site } from "../lib/sample";
+import { Avatar, Field, Google, INVOICES, logFor, MEMBERS, Mini, ORG, PAGES, SITES, Status, USER, type Page, type Site } from "../lib/sample";
+import { InstallCheck } from "./install-check";
 import { Cookie } from "./studio";
 
 const Chevron = () => <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted" aria-hidden><path d="M4 6l4 4 4-4" /></svg>;
@@ -71,8 +72,48 @@ export function NewSiteMenu({ id }: { id: string }) {
   );
 }
 
+const ago = (d: Date) => { const m = Math.round((Date.now() - d.getTime()) / 6e4); return m < 60 ? `${m} min geleden` : m < 1440 ? `${Math.round(m / 60)} uur geleden` : `${Math.round(m / 1440)} d geleden`; };
+const ACTION = { accept: ["Accepteren", "bg-emerald-400"], reject: ["Weigeren", "bg-red-400"], custom: ["Aangepast", "bg-amber-400"] } as const;
+
+function Logbook({ site }: { site: Site }) {
+  const [filter, setFilter] = useState<"all" | keyof typeof ACTION>("all");
+  const [q, setQ] = useState("");
+  const rows = logFor(site);
+  const shown = rows.filter((r) => (filter === "all" || r.action === filter) && (!q || r.id.includes(q.toLowerCase())));
+  const count = (a: keyof typeof ACTION) => rows.filter((r) => r.action === a).length;
+  const csv = () => { const blob = new Blob([["tijd,actie,categorieen,versie,consent_id", ...rows.map((r) => `${r.at.toISOString()},${r.action},${r.cats.join("|")},${r.version},${r.id}`)].join("\n")], { type: "text/csv" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${site.url}-consent-log.csv`; a.click(); };
+  if (!rows.length) return <p className="text-[11px] leading-relaxed text-muted">Nog geen keuzes gelogd. Zodra het script op de site draait, verschijnt hier elke keuze.</p>;
+  return (
+    <div className="flex min-h-0 flex-col gap-3">
+      <div>
+        <div className="mb-1 flex items-center justify-between text-[11px] text-muted"><span>Laatste 30 dagen · {site.choices} keuzes</span><span>laatste {ago(rows[0].at)}</span></div>
+        <div className="flex h-1.5 overflow-hidden rounded-full bg-raised">{(Object.keys(ACTION) as (keyof typeof ACTION)[]).map((a) => <span key={a} className={ACTION[a][1]} style={{ width: `${(count(a) / rows.length) * 100}%` }} />)}</div>
+        <div className="mt-1.5 flex gap-3 text-[11px] text-muted">{(Object.keys(ACTION) as (keyof typeof ACTION)[]).map((a) => <span key={a} className="flex items-center gap-1"><span className={`size-1.5 rounded-full ${ACTION[a][1]}`} />{ACTION[a][0]} {Math.round((count(a) / rows.length) * 100)}%</span>)}</div>
+      </div>
+      <div className="flex gap-1.5">
+        <select className="field h-7 w-auto text-xs" value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)}><option value="all">Alles</option>{(Object.keys(ACTION) as (keyof typeof ACTION)[]).map((a) => <option key={a} value={a}>{ACTION[a][0]}</option>)}</select>
+        <input className="field h-7 font-mono text-xs" placeholder="consent-id" value={q} onChange={(e) => setQ(e.target.value)} />
+        <button type="button" className="btn h-7 px-2 text-xs" onClick={csv}>CSV</button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto rounded-lg" style={{ boxShadow: "var(--shadow-ring)" }}>
+        {shown.map((r, i) => (
+          <div key={r.id} className={`flex items-center gap-2 px-2 py-1.5 text-[11px] ${i ? "border-t border-line" : ""}`}>
+            <span className={`size-1.5 shrink-0 rounded-full ${ACTION[r.action][1]}`} />
+            <span className="w-24 shrink-0">{ACTION[r.action][0]}</span>
+            <span className="min-w-0 flex-1 truncate text-muted" title={r.cats.join(", ")}>{r.cats.length ? `${r.cats.length} cat.` : "—"}</span>
+            <span className="shrink-0 text-muted">{ago(r.at)}</span>
+            <span className="w-14 shrink-0 truncate font-mono text-muted" title={r.id}>{r.id.slice(0, 6)}</span>
+          </div>
+        ))}
+        {!shown.length && <p className="p-3 text-center text-[11px] text-muted">Niets gevonden</p>}
+      </div>
+    </div>
+  );
+}
+
 export function Sites() {
   const [sel, setSel] = useState<Site>(SITES[0]);
+  const [view, setView] = useState<"overzicht" | "logboek">("overzicht");
   return (
     <div className="grid min-h-0 grid-cols-[1fr_320px]">
       <main className="canvas overflow-auto p-6">
@@ -90,6 +131,8 @@ export function Sites() {
         <Mini site={sel} height={120} />
         <div className="mt-3 text-[15px] font-semibold tracking-tight">{sel.name}</div>
         <div className="flex items-center gap-2 text-xs text-muted">{sel.url} <Status s={sel.status} /></div>
+        <div className="seg mt-3 w-full"><button type="button" className="flex-1" aria-pressed={view === "overzicht"} onClick={() => setView("overzicht")}>Overzicht</button><button type="button" className="flex-1" aria-pressed={view === "logboek"} onClick={() => setView("logboek")}>Logboek</button></div>
+        {view === "logboek" ? <div className="mt-4 min-h-0 flex-1"><Logbook site={sel} /></div> : <>
         <div className="mt-4 grid grid-cols-2 gap-2">
           <div className="rounded-lg p-2.5" style={{ boxShadow: "var(--shadow-ring)" }}><div className="text-[11px] text-muted">Keuzes · 30 d</div><div className="font-mono text-[15px]">{sel.choices}</div></div>
           <div className="rounded-lg p-2.5" style={{ boxShadow: "var(--shadow-ring)" }}><div className="text-[11px] text-muted">Accepteert</div><div className="font-mono text-[15px]">{sel.accept}%</div></div>
@@ -97,7 +140,9 @@ export function Sites() {
         <div className="mt-4 flex flex-col gap-2"><Link href={studioHref(sel)} className="btn btn-primary h-9 w-full">Openen in Studio</Link><Link href={`${studioHref(sel)}#installatie`} className="btn w-full">Installatie-code</Link></div>
         <div className="mt-4 rounded-lg p-2.5 font-mono text-[11px] text-muted" style={{ boxShadow: "var(--shadow-ring)" }}>consentkit.nl/s/{sel.id}.js</div>
         {sel.status === "verlopen" && <div className="mt-3 rounded-lg bg-amber-400/10 p-2.5 text-[11px] leading-relaxed text-amber-200">Banner staat uit: abonnement verlopen. De Consent Mode-defaults blijven op denied.</div>}
+        <div className="mt-4"><InstallCheck key={sel.id} url={`https://${sel.url}`} /></div>
         <button type="button" className="btn btn-ghost mt-auto text-xs text-muted">Site verwijderen</button>
+        </>}
       </aside>
     </div>
   );
