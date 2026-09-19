@@ -3,8 +3,11 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { Avatar, Field, Google, INVOICES, logFor, MEMBERS, Mini, ORG, PAGES, SITES, Status, USER, type Page, type Site } from "../lib/sample";
+import { Avatar, Field, Google, INVOICES, MEMBERS, Mini, ORG, PAGES, SITES, Status, USER, type Page, type Site } from "../lib/sample";
 import { InstallCheck } from "./install-check";
+import dynamic from "next/dynamic";
+// tijdgebonden data → alleen client renderen (geen hydration-mismatch)
+const Logbook = dynamic(() => import("./logbook").then((m) => m.Logbook), { ssr: false });
 import { Cookie } from "./studio";
 
 const Chevron = () => <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted" aria-hidden><path d="M4 6l4 4 4-4" /></svg>;
@@ -68,75 +71,6 @@ export function NewSiteMenu({ id }: { id: string }) {
       </form>
       <div className="my-1 h-px bg-line" />
       <Link href="/" className="menu-item text-muted"><span className="flex-1">Zonder site beginnen</span><span>→</span></Link>
-    </div>
-  );
-}
-
-const ago = (d: Date) => { const m = Math.round((Date.now() - d.getTime()) / 6e4); return m < 60 ? `${m} min geleden` : m < 1440 ? `${Math.round(m / 60)} uur geleden` : `${Math.round(m / 1440)} d geleden`; };
-const ACTION = { accept: ["Accepteren", "bg-emerald-400"], reject: ["Weigeren", "bg-red-400"], custom: ["Aangepast", "bg-amber-400"] } as const;
-
-const fmt = (d: Date) => d.toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-const pct = (n: number, d: number) => (d ? Math.round((n / d) * 100) : 0);
-
-const KPI = ({ label, value, sub }: { label: string; value: string; sub?: string }) => <div className="rounded-xl bg-panel p-3" style={{ boxShadow: "var(--shadow-ring)" }}><div className="text-[11px] text-muted">{label}</div><div className="mt-0.5 font-mono text-[20px] leading-tight">{value}</div>{sub && <div className="mt-0.5 text-[11px] text-muted">{sub}</div>}</div>;
-
-/** Logboek als volledige weergave: KPI's, 30-dagen-grafiek, opt-in per categorie, tabel met filters. */
-function Logbook({ site }: { site: Site }) {
-  const [filter, setFilter] = useState<"all" | keyof typeof ACTION>("all");
-  const [q, setQ] = useState("");
-  const rows = logFor(site);
-  const shown = rows.filter((r) => (filter === "all" || r.action === filter) && (!q || r.id.includes(q.toLowerCase()) || r.page.includes(q.toLowerCase())));
-  const n = rows.length;
-  const count = (a: keyof typeof ACTION) => rows.filter((r) => r.action === a).length;
-  const optin = (c: string) => pct(rows.filter((r) => r.cats.includes(c)).length, n);
-  const days = Array.from({ length: 30 }, (_, i) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - 29 + i); const inDay = rows.filter((r) => r.at >= d && r.at < new Date(d.getTime() + 864e5)); return { d, accept: inDay.filter((r) => r.action === "accept").length, reject: inDay.filter((r) => r.action === "reject").length, custom: inDay.filter((r) => r.action === "custom").length }; });
-  const max = Math.max(1, ...days.map((x) => x.accept + x.reject + x.custom));
-  const csv = () => { const blob = new Blob([["tijd,actie,categorieen,versie,apparaat,pagina,consent_id", ...rows.map((r) => `${r.at.toISOString()},${r.action},${r.cats.join("|")},${r.version},${r.device},${r.page},${r.id}`)].join("\n")], { type: "text/csv" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${site.url}-consent-log.csv`; a.click(); };
-  if (!n) return <div className="rounded-xl bg-panel p-6 text-center text-xs text-muted" style={{ boxShadow: "var(--shadow-pop)" }}>Nog geen keuzes gelogd voor {site.url}. Zodra het script op de site draait, verschijnt hier elke keuze.</div>;
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-4 gap-2">
-        <KPI label="Keuzes · 30 d" value={String(site.choices)} sub={`laatste ${ago(rows[0].at)}`} />
-        <KPI label="Accepteert alles" value={`${pct(count("accept"), n)}%`} sub={`${count("accept")} keuzes`} />
-        <KPI label="Weigert" value={`${pct(count("reject"), n)}%`} sub={`${count("reject")} keuzes`} />
-        <KPI label="Past aan" value={`${pct(count("custom"), n)}%`} sub={`${count("custom")} keuzes`} />
-      </div>
-      <div className="grid grid-cols-[1fr_260px] gap-2">
-        <div className="rounded-xl bg-panel p-3" style={{ boxShadow: "var(--shadow-ring)" }}>
-          <div className="mb-2 flex items-center justify-between text-[11px] text-muted"><span>Per dag</span><span className="flex gap-3">{(Object.keys(ACTION) as (keyof typeof ACTION)[]).map((a) => <span key={a} className="flex items-center gap-1"><span className={`size-1.5 rounded-full ${ACTION[a][1]}`} />{ACTION[a][0]}</span>)}</span></div>
-          <div className="flex h-24 items-end gap-[3px]">
-            {days.map((x) => <div key={+x.d} className="flex h-full flex-1 flex-col-reverse gap-px" title={`${x.d.toLocaleDateString("nl-NL", { day: "numeric", month: "short" })}: ${x.accept + x.reject + x.custom} keuzes`}>{(["accept", "custom", "reject"] as const).map((a) => <span key={a} className={`${ACTION[a][1]} rounded-[2px] opacity-90`} style={{ height: `${(x[a] / max) * 100}%` }} />)}</div>)}
-          </div>
-          <div className="mt-1 flex justify-between text-[10px] text-muted"><span>{days[0].d.toLocaleDateString("nl-NL", { day: "numeric", month: "short" })}</span><span>vandaag</span></div>
-        </div>
-        <div className="rounded-xl bg-panel p-3" style={{ boxShadow: "var(--shadow-ring)" }}>
-          <div className="mb-2 text-[11px] text-muted">Opt-in per categorie</div>
-          {[["analytics", "Statistieken"], ["marketing", "Marketing"]].map(([c, l]) => <div key={c} className="mb-2"><div className="flex justify-between text-[12px]"><span>{l}</span><span className="font-mono text-muted">{optin(c)}%</span></div><div className="mt-1 h-1.5 overflow-hidden rounded-full bg-raised"><span className="block h-full rounded-full bg-emerald-400" style={{ width: `${optin(c)}%` }} /></div></div>)}
-          <div className="mt-3 border-t border-line pt-2 text-[11px] text-muted">Mobiel {pct(rows.filter((r) => r.device === "Mobiel").length, n)}% · Desktop {pct(rows.filter((r) => r.device === "Desktop").length, n)}%</div>
-        </div>
-      </div>
-      <div className="rounded-xl bg-panel" style={{ boxShadow: "var(--shadow-ring)" }}>
-        <div className="flex items-center gap-2 border-b border-line p-2">
-          <select className="field h-7 w-auto text-xs" value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)}><option value="all">Alle acties</option>{(Object.keys(ACTION) as (keyof typeof ACTION)[]).map((a) => <option key={a} value={a}>{ACTION[a][0]}</option>)}</select>
-          <input className="field h-7 max-w-xs font-mono text-xs" placeholder="consent-id of pagina" value={q} onChange={(e) => setQ(e.target.value)} />
-          <span className="ml-auto text-[11px] whitespace-nowrap text-muted">{shown.length} van {n}</span>
-          <button type="button" className="btn h-7 px-2 text-xs" onClick={csv}>CSV</button>
-        </div>
-        <div className="grid grid-cols-[120px_100px_170px_50px_70px_1fr] gap-3 px-3 py-1.5 text-[11px] text-muted"><span>Tijd</span><span>Actie</span><span>Categorieën</span><span>Versie</span><span>Apparaat</span><span>Consent-ID</span></div>
-        <div className="max-h-[420px] overflow-auto">
-          {shown.map((r) => (
-            <div key={r.id} className="grid grid-cols-[120px_100px_170px_50px_70px_1fr] items-center gap-3 border-t border-line px-3 py-1.5 text-[12px]">
-              <span className="text-muted">{fmt(r.at)}</span>
-              <span className="flex items-center gap-1.5"><span className={`size-1.5 rounded-full ${ACTION[r.action][1]}`} />{ACTION[r.action][0]}</span>
-              <span className="flex gap-1 whitespace-nowrap">{r.cats.length ? r.cats.map((c) => <span key={c} className="rounded-full bg-raised px-1.5 text-[11px]">{c}</span>) : <span className="text-muted">alleen noodzakelijk</span>}</span>
-              <span className="font-mono text-muted">v{r.version}</span>
-              <span className="text-muted">{r.device}</span>
-              <span className="truncate font-mono text-muted" title={`${r.id} · ${r.page}`}>{r.id}<span className="ml-2 opacity-60">{r.page}</span></span>
-            </div>
-          ))}
-          {!shown.length && <p className="p-4 text-center text-[11px] text-muted">Niets gevonden</p>}
-        </div>
-      </div>
     </div>
   );
 }
