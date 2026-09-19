@@ -64,6 +64,8 @@ export function NewSiteMenu({ id }: { id: string }) {
         <input className="field font-mono text-xs" placeholder="klant.webflow.io" value={url} onChange={(e) => setUrl(e.target.value)} required />
         <button type="submit" className="btn btn-primary h-8 w-full">Stijl ophalen en beginnen</button>
       </form>
+      <div className="my-1 h-px bg-line" />
+      <Link href="/" className="menu-item text-muted"><span className="flex-1">Zonder site beginnen</span><span>→</span></Link>
     </div>
   );
 }
@@ -91,7 +93,7 @@ export function Sites() {
           <div className="rounded-lg p-2.5" style={{ boxShadow: "var(--shadow-ring)" }}><div className="text-[11px] text-muted">Keuzes · 30 d</div><div className="font-mono text-[15px]">{sel.choices}</div></div>
           <div className="rounded-lg p-2.5" style={{ boxShadow: "var(--shadow-ring)" }}><div className="text-[11px] text-muted">Accepteert</div><div className="font-mono text-[15px]">{sel.accept}%</div></div>
         </div>
-        <div className="mt-4 flex flex-col gap-1.5"><Link href={studioHref(sel)} className="btn btn-primary h-9 w-full">Openen in Studio</Link><Link href={`${studioHref(sel)}#installatie`} className="btn w-full">Installatie-code</Link></div>
+        <div className="mt-4 flex flex-col gap-2"><Link href={studioHref(sel)} className="btn btn-primary h-9 w-full">Openen in Studio</Link><Link href={`${studioHref(sel)}#installatie`} className="btn w-full">Installatie-code</Link></div>
         <div className="mt-4 rounded-lg p-2.5 font-mono text-[11px] text-muted" style={{ boxShadow: "var(--shadow-ring)" }}>consentkit.nl/s/{sel.id}.js</div>
         {sel.status === "verlopen" && <div className="mt-3 rounded-lg bg-amber-400/10 p-2.5 text-[11px] leading-relaxed text-amber-200">Banner staat uit: abonnement verlopen. De Consent Mode-defaults blijven op denied.</div>}
         <button type="button" className="btn btn-ghost mt-auto text-xs text-muted">Site verwijderen</button>
