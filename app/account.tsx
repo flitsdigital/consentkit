@@ -1,7 +1,10 @@
 "use client";
 // Account-schermen: login, sites (met detailkolom), team, abonnement, profiel. Data uit lib/sample tot de DB er is.
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
+import dynamic from "next/dynamic";
+import { Switcher } from "./prototype/switcher";
 import { useState, type ReactNode } from "react";
 import { Avatar, Field, Google, INVOICES, logFor, MEMBERS, Mini, ORG, PAGES, SITES, Status, USER, type Page, type Site } from "../lib/sample";
 import { InstallCheck } from "./install-check";
@@ -141,15 +144,23 @@ function Logbook({ site }: { site: Site }) {
   );
 }
 
+// PROTOTYPE: ?variant=A|B|C wisselt het logboek; zonder param de huidige versie
+// tijdgebonden sample-data → alleen client renderen (geen hydration-mismatch)
+const LOG_VARIANTS = { A: dynamic(() => import("./prototype/logbook-variants").then((m) => m.LogA), { ssr: false }), B: dynamic(() => import("./prototype/logbook-variants").then((m) => m.LogB), { ssr: false }), C: dynamic(() => import("./prototype/logbook-variants").then((m) => m.LogC), { ssr: false }) } as const;
+function LogSwitch({ site }: { site: Site }) {
+  const v = useSearchParams().get("variant") as keyof typeof LOG_VARIANTS | null;
+  const V = v ? LOG_VARIANTS[v] : null;
+  return <>{V ? <V key={site.id} site={site} /> : <Logbook site={site} />}<Switcher variants={["huidig", "A", "B", "C"]} names={{ huidig: "Huidig", A: "Paneel", B: "Stream", C: "Dashboard" }} /></>;
+}
 export function Sites() {
   const [sel, setSel] = useState<Site>(SITES[0]);
-  const [view, setView] = useState<"overzicht" | "logboek">("overzicht");
+  const [view, setView] = useState<"overzicht" | "logboek">("logboek");
   return (
     <div className="grid min-h-0 grid-cols-[1fr_320px]">
       <main className="canvas overflow-auto p-6">
         {view === "logboek" ? <>
         <div className="mb-4 flex items-center gap-3"><button type="button" className="btn btn-ghost h-7 px-2 text-xs" onClick={() => setView("overzicht")}>← Sites</button><h1 className="text-[15px] font-semibold tracking-tight">Logboek · {sel.name}</h1></div>
-        <Logbook site={sel} />
+        <Suspense><LogSwitch site={sel} /></Suspense>
         </> : <>
         <div className="mb-4 flex items-center justify-between"><h1 className="text-[15px] font-semibold tracking-tight">Sites</h1><span className="relative"><button type="button" className="btn btn-primary" popoverTarget="new-site">+ Nieuwe site</button><NewSiteMenu id="new-site" /></span></div>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3">

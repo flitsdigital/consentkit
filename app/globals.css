@@ -279,3 +279,6 @@ pre.code { @apply overflow-auto rounded-lg p-3 font-mono text-[11px] leading-rel
 @media (hover: hover) and (pointer: fine) { .check-list > .menu-item:hover { background: transparent; } }
 .check-pill { position: absolute; top: 0; right: 0; left: 0; height: 32px; border-radius: 8px; background: rgba(255, 255, 255, 0.08); opacity: 0; pointer-events: none; transition: transform 220ms var(--ease-out-strong), opacity 150ms ease; }
 @media (prefers-reduced-motion: reduce) { .check-pill { transition: opacity 150ms ease; } }
+
+/* PROTOTYPE logboek: nieuwe live-regel schuift in */
+.row-new { animation: none; transition: background-color 600ms var(--ease-out-strong); @starting-style { background-color: rgba(52, 211, 153, 0.18); } }
