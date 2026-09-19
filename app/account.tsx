@@ -6,6 +6,7 @@ import { useState, type ReactNode } from "react";
 import { Avatar, Field, Google, INVOICES, MEMBERS, Mini, ORG, PAGES, SITES, Status, USER, type Page, type Site } from "../lib/sample";
 import { Cookie } from "./studio";
 
+const Chevron = () => <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted" aria-hidden><path d="M4 6l4 4 4-4" /></svg>;
 const studioHref = (s: Site) => `/?url=${encodeURIComponent(`https://${s.url}`)}`;
 
 export function LoginForm() {
@@ -41,7 +42,7 @@ export function Sidebar({ children }: { children: ReactNode }) {
     <div className="grid h-dvh grid-cols-[220px_1fr]">
       <aside className="flex flex-col border-r border-line bg-panel p-3">
         <span className="relative">
-          <button type="button" className="menu-item mb-3 justify-between" popoverTarget="org-menu"><span className="flex items-center gap-2"><Cookie /><span className="text-[13px] font-medium">{ORG.name}</span></span><span className="text-muted">⌄</span></button>
+          <button type="button" className="menu-item mb-3 justify-between" popoverTarget="org-menu"><span className="flex items-center gap-2"><Cookie /><span className="text-[13px] font-medium">{ORG.name}</span></span><Chevron /></button>
           <div id="org-menu" popover="auto" className="menu w-52"><div className="menu-title">Bureaus</div><button type="button" className="menu-item" aria-current="true">{ORG.name}</button><button type="button" className="menu-item text-muted">+ Nieuw bureau</button></div>
         </span>
         <nav className="flex flex-col gap-0.5">
@@ -160,7 +161,7 @@ export function SiteSwitcher({ domain }: { domain: string }) {
   return (
     <>
       <span className="relative">
-        <button type="button" className="btn h-7 gap-1.5 px-2 text-[13px] font-normal" popoverTarget="site-menu"><span className="size-2 rounded-full" style={{ background: cur?.accent ?? "var(--color-muted)" }} />{domain}<span className="text-muted">⌄</span></button>
+        <button type="button" className="btn h-7 gap-1.5 px-2 text-[13px] font-normal" popoverTarget="site-menu"><span className="size-2 rounded-full" style={{ background: cur?.accent ?? "var(--color-muted)" }} />{domain}<Chevron /></button>
         <div id="site-menu" popover="auto" className="menu w-80">
           <input className="field mb-1 h-7 text-xs" placeholder="Zoek site…" onChange={(e) => { const q = e.target.value.toLowerCase(); e.currentTarget.parentElement?.querySelectorAll<HTMLElement>("[data-site]").forEach((el) => (el.hidden = !el.dataset.site!.includes(q))); }} />
           {SITES.map((s) => <Link key={s.id} href={studioHref(s)} data-site={`${s.name} ${s.url}`.toLowerCase()} className="menu-item" aria-current={s.url === domain}><span className="size-2 shrink-0 rounded-full" style={{ background: s.accent }} /><span className="min-w-0 flex-1 truncate">{s.name}<span className="ml-1.5 text-[11px] text-muted">{s.url}</span></span><Status s={s.status} /></Link>)}
