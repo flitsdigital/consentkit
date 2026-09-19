@@ -179,7 +179,8 @@ export function Configurator({ files }: { files: Files }) {
   const replay = () => { setPrefsOpen(true); setTimeout(() => frame.current?.contentWindow?.postMessage({ cb: "replay" }, "*"), 400); }; // na eventuele iframe-reload
   const dial = useDialKitController("Banner", config, { id: "banner", shortcuts: SHORTCUTS, onAction: (p) => p === "effect.replay" && replay() });
   // Versies (DialKit-presets): A/B voor de klant. In-memory voor deze sessie.
-  const presets = useSyncExternalStore((cb) => DialStore.subscribe("banner", cb), () => DialStore.getPresets("banner"), () => NO_PRESETS);
+  // getPresets geeft een nieuwe [] terug als er niets is → stabiele lege array, anders loopt useSyncExternalStore
+  const presets = useSyncExternalStore((cb) => DialStore.subscribe("banner", cb), () => { const p = DialStore.getPresets("banner"); return p.length ? p : NO_PRESETS; }, () => NO_PRESETS);
   const activePreset = useSyncExternalStore((cb) => DialStore.subscribe("banner", cb), () => DialStore.getActivePresetId("banner"), () => null);
   const values = dial.values as unknown as DialValues;
   const resolved = useMemo(() => toVars(values), [values]); // altijd hex/px: preview + contrast
