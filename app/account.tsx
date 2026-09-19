@@ -75,37 +75,67 @@ export function NewSiteMenu({ id }: { id: string }) {
 const ago = (d: Date) => { const m = Math.round((Date.now() - d.getTime()) / 6e4); return m < 60 ? `${m} min geleden` : m < 1440 ? `${Math.round(m / 60)} uur geleden` : `${Math.round(m / 1440)} d geleden`; };
 const ACTION = { accept: ["Accepteren", "bg-emerald-400"], reject: ["Weigeren", "bg-red-400"], custom: ["Aangepast", "bg-amber-400"] } as const;
 
+const fmt = (d: Date) => d.toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const pct = (n: number, d: number) => (d ? Math.round((n / d) * 100) : 0);
+
+const KPI = ({ label, value, sub }: { label: string; value: string; sub?: string }) => <div className="rounded-xl bg-panel p-3" style={{ boxShadow: "var(--shadow-ring)" }}><div className="text-[11px] text-muted">{label}</div><div className="mt-0.5 font-mono text-[20px] leading-tight">{value}</div>{sub && <div className="mt-0.5 text-[11px] text-muted">{sub}</div>}</div>;
+
+/** Logboek als volledige weergave: KPI's, 30-dagen-grafiek, opt-in per categorie, tabel met filters. */
 function Logbook({ site }: { site: Site }) {
   const [filter, setFilter] = useState<"all" | keyof typeof ACTION>("all");
   const [q, setQ] = useState("");
   const rows = logFor(site);
-  const shown = rows.filter((r) => (filter === "all" || r.action === filter) && (!q || r.id.includes(q.toLowerCase())));
+  const shown = rows.filter((r) => (filter === "all" || r.action === filter) && (!q || r.id.includes(q.toLowerCase()) || r.page.includes(q.toLowerCase())));
+  const n = rows.length;
   const count = (a: keyof typeof ACTION) => rows.filter((r) => r.action === a).length;
-  const csv = () => { const blob = new Blob([["tijd,actie,categorieen,versie,consent_id", ...rows.map((r) => `${r.at.toISOString()},${r.action},${r.cats.join("|")},${r.version},${r.id}`)].join("\n")], { type: "text/csv" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${site.url}-consent-log.csv`; a.click(); };
-  if (!rows.length) return <p className="text-[11px] leading-relaxed text-muted">Nog geen keuzes gelogd. Zodra het script op de site draait, verschijnt hier elke keuze.</p>;
+  const optin = (c: string) => pct(rows.filter((r) => r.cats.includes(c)).length, n);
+  const days = Array.from({ length: 30 }, (_, i) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - 29 + i); const inDay = rows.filter((r) => r.at >= d && r.at < new Date(d.getTime() + 864e5)); return { d, accept: inDay.filter((r) => r.action === "accept").length, reject: inDay.filter((r) => r.action === "reject").length, custom: inDay.filter((r) => r.action === "custom").length }; });
+  const max = Math.max(1, ...days.map((x) => x.accept + x.reject + x.custom));
+  const csv = () => { const blob = new Blob([["tijd,actie,categorieen,versie,apparaat,pagina,consent_id", ...rows.map((r) => `${r.at.toISOString()},${r.action},${r.cats.join("|")},${r.version},${r.device},${r.page},${r.id}`)].join("\n")], { type: "text/csv" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${site.url}-consent-log.csv`; a.click(); };
+  if (!n) return <div className="rounded-xl bg-panel p-6 text-center text-xs text-muted" style={{ boxShadow: "var(--shadow-pop)" }}>Nog geen keuzes gelogd voor {site.url}. Zodra het script op de site draait, verschijnt hier elke keuze.</div>;
   return (
-    <div className="flex min-h-0 flex-col gap-3">
-      <div>
-        <div className="mb-1 flex items-center justify-between text-[11px] text-muted"><span>Laatste 30 dagen · {site.choices} keuzes</span><span>laatste {ago(rows[0].at)}</span></div>
-        <div className="flex h-1.5 overflow-hidden rounded-full bg-raised">{(Object.keys(ACTION) as (keyof typeof ACTION)[]).map((a) => <span key={a} className={ACTION[a][1]} style={{ width: `${(count(a) / rows.length) * 100}%` }} />)}</div>
-        <div className="mt-1.5 flex gap-3 text-[11px] text-muted">{(Object.keys(ACTION) as (keyof typeof ACTION)[]).map((a) => <span key={a} className="flex items-center gap-1"><span className={`size-1.5 rounded-full ${ACTION[a][1]}`} />{ACTION[a][0]} {Math.round((count(a) / rows.length) * 100)}%</span>)}</div>
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-4 gap-2">
+        <KPI label="Keuzes · 30 d" value={String(site.choices)} sub={`laatste ${ago(rows[0].at)}`} />
+        <KPI label="Accepteert alles" value={`${pct(count("accept"), n)}%`} sub={`${count("accept")} keuzes`} />
+        <KPI label="Weigert" value={`${pct(count("reject"), n)}%`} sub={`${count("reject")} keuzes`} />
+        <KPI label="Past aan" value={`${pct(count("custom"), n)}%`} sub={`${count("custom")} keuzes`} />
       </div>
-      <div className="flex gap-1.5">
-        <select className="field h-7 w-auto text-xs" value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)}><option value="all">Alles</option>{(Object.keys(ACTION) as (keyof typeof ACTION)[]).map((a) => <option key={a} value={a}>{ACTION[a][0]}</option>)}</select>
-        <input className="field h-7 font-mono text-xs" placeholder="consent-id" value={q} onChange={(e) => setQ(e.target.value)} />
-        <button type="button" className="btn h-7 px-2 text-xs" onClick={csv}>CSV</button>
-      </div>
-      <div className="min-h-0 flex-1 overflow-auto rounded-lg" style={{ boxShadow: "var(--shadow-ring)" }}>
-        {shown.map((r, i) => (
-          <div key={r.id} className={`flex items-center gap-2 px-2 py-1.5 text-[11px] ${i ? "border-t border-line" : ""}`}>
-            <span className={`size-1.5 shrink-0 rounded-full ${ACTION[r.action][1]}`} />
-            <span className="w-24 shrink-0">{ACTION[r.action][0]}</span>
-            <span className="min-w-0 flex-1 truncate text-muted" title={r.cats.join(", ")}>{r.cats.length ? `${r.cats.length} cat.` : "—"}</span>
-            <span className="shrink-0 text-muted">{ago(r.at)}</span>
-            <span className="w-14 shrink-0 truncate font-mono text-muted" title={r.id}>{r.id.slice(0, 6)}</span>
+      <div className="grid grid-cols-[1fr_260px] gap-2">
+        <div className="rounded-xl bg-panel p-3" style={{ boxShadow: "var(--shadow-ring)" }}>
+          <div className="mb-2 flex items-center justify-between text-[11px] text-muted"><span>Per dag</span><span className="flex gap-3">{(Object.keys(ACTION) as (keyof typeof ACTION)[]).map((a) => <span key={a} className="flex items-center gap-1"><span className={`size-1.5 rounded-full ${ACTION[a][1]}`} />{ACTION[a][0]}</span>)}</span></div>
+          <div className="flex h-24 items-end gap-[3px]">
+            {days.map((x) => <div key={+x.d} className="flex h-full flex-1 flex-col-reverse gap-px" title={`${x.d.toLocaleDateString("nl-NL", { day: "numeric", month: "short" })}: ${x.accept + x.reject + x.custom} keuzes`}>{(["accept", "custom", "reject"] as const).map((a) => <span key={a} className={`${ACTION[a][1]} rounded-[2px] opacity-90`} style={{ height: `${(x[a] / max) * 100}%` }} />)}</div>)}
           </div>
-        ))}
-        {!shown.length && <p className="p-3 text-center text-[11px] text-muted">Niets gevonden</p>}
+          <div className="mt-1 flex justify-between text-[10px] text-muted"><span>{days[0].d.toLocaleDateString("nl-NL", { day: "numeric", month: "short" })}</span><span>vandaag</span></div>
+        </div>
+        <div className="rounded-xl bg-panel p-3" style={{ boxShadow: "var(--shadow-ring)" }}>
+          <div className="mb-2 text-[11px] text-muted">Opt-in per categorie</div>
+          {[["analytics", "Statistieken"], ["marketing", "Marketing"]].map(([c, l]) => <div key={c} className="mb-2"><div className="flex justify-between text-[12px]"><span>{l}</span><span className="font-mono text-muted">{optin(c)}%</span></div><div className="mt-1 h-1.5 overflow-hidden rounded-full bg-raised"><span className="block h-full rounded-full bg-emerald-400" style={{ width: `${optin(c)}%` }} /></div></div>)}
+          <div className="mt-3 border-t border-line pt-2 text-[11px] text-muted">Mobiel {pct(rows.filter((r) => r.device === "Mobiel").length, n)}% · Desktop {pct(rows.filter((r) => r.device === "Desktop").length, n)}%</div>
+        </div>
+      </div>
+      <div className="rounded-xl bg-panel" style={{ boxShadow: "var(--shadow-ring)" }}>
+        <div className="flex items-center gap-2 border-b border-line p-2">
+          <select className="field h-7 w-auto text-xs" value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)}><option value="all">Alle acties</option>{(Object.keys(ACTION) as (keyof typeof ACTION)[]).map((a) => <option key={a} value={a}>{ACTION[a][0]}</option>)}</select>
+          <input className="field h-7 max-w-xs font-mono text-xs" placeholder="consent-id of pagina" value={q} onChange={(e) => setQ(e.target.value)} />
+          <span className="ml-auto text-[11px] whitespace-nowrap text-muted">{shown.length} van {n}</span>
+          <button type="button" className="btn h-7 px-2 text-xs" onClick={csv}>CSV</button>
+        </div>
+        <div className="grid grid-cols-[120px_100px_170px_50px_70px_1fr] gap-3 px-3 py-1.5 text-[11px] text-muted"><span>Tijd</span><span>Actie</span><span>Categorieën</span><span>Versie</span><span>Apparaat</span><span>Consent-ID</span></div>
+        <div className="max-h-[420px] overflow-auto">
+          {shown.map((r) => (
+            <div key={r.id} className="grid grid-cols-[120px_100px_170px_50px_70px_1fr] items-center gap-3 border-t border-line px-3 py-1.5 text-[12px]">
+              <span className="text-muted">{fmt(r.at)}</span>
+              <span className="flex items-center gap-1.5"><span className={`size-1.5 rounded-full ${ACTION[r.action][1]}`} />{ACTION[r.action][0]}</span>
+              <span className="flex gap-1 whitespace-nowrap">{r.cats.length ? r.cats.map((c) => <span key={c} className="rounded-full bg-raised px-1.5 text-[11px]">{c}</span>) : <span className="text-muted">alleen noodzakelijk</span>}</span>
+              <span className="font-mono text-muted">v{r.version}</span>
+              <span className="text-muted">{r.device}</span>
+              <span className="truncate font-mono text-muted" title={`${r.id} · ${r.page}`}>{r.id}<span className="ml-2 opacity-60">{r.page}</span></span>
+            </div>
+          ))}
+          {!shown.length && <p className="p-4 text-center text-[11px] text-muted">Niets gevonden</p>}
+        </div>
       </div>
     </div>
   );
@@ -117,6 +147,10 @@ export function Sites() {
   return (
     <div className="grid min-h-0 grid-cols-[1fr_320px]">
       <main className="canvas overflow-auto p-6">
+        {view === "logboek" ? <>
+        <div className="mb-4 flex items-center gap-3"><button type="button" className="btn btn-ghost h-7 px-2 text-xs" onClick={() => setView("overzicht")}>← Sites</button><h1 className="text-[15px] font-semibold tracking-tight">Logboek · {sel.name}</h1></div>
+        <Logbook site={sel} />
+        </> : <>
         <div className="mb-4 flex items-center justify-between"><h1 className="text-[15px] font-semibold tracking-tight">Sites</h1><span className="relative"><button type="button" className="btn btn-primary" popoverTarget="new-site">+ Nieuwe site</button><NewSiteMenu id="new-site" /></span></div>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3">
           {SITES.map((s) => (
@@ -126,13 +160,13 @@ export function Sites() {
             </button>
           ))}
         </div>
+        </>}
       </main>
       <aside className="flex flex-col overflow-auto border-l border-line bg-panel p-4">
         <Mini site={sel} height={120} />
         <div className="mt-3 text-[15px] font-semibold tracking-tight">{sel.name}</div>
         <div className="flex items-center gap-2 text-xs text-muted">{sel.url} <Status s={sel.status} /></div>
         <div className="seg mt-3 w-full"><button type="button" className="flex-1" aria-pressed={view === "overzicht"} onClick={() => setView("overzicht")}>Overzicht</button><button type="button" className="flex-1" aria-pressed={view === "logboek"} onClick={() => setView("logboek")}>Logboek</button></div>
-        {view === "logboek" ? <div className="mt-4 min-h-0 flex-1"><Logbook site={sel} /></div> : <>
         <div className="mt-4 grid grid-cols-2 gap-2">
           <div className="rounded-lg p-2.5" style={{ boxShadow: "var(--shadow-ring)" }}><div className="text-[11px] text-muted">Keuzes · 30 d</div><div className="font-mono text-[15px]">{sel.choices}</div></div>
           <div className="rounded-lg p-2.5" style={{ boxShadow: "var(--shadow-ring)" }}><div className="text-[11px] text-muted">Accepteert</div><div className="font-mono text-[15px]">{sel.accept}%</div></div>
@@ -142,7 +176,6 @@ export function Sites() {
         {sel.status === "verlopen" && <div className="mt-3 rounded-lg bg-amber-400/10 p-2.5 text-[11px] leading-relaxed text-amber-200">Banner staat uit: abonnement verlopen. De Consent Mode-defaults blijven op denied.</div>}
         <div className="mt-4"><InstallCheck key={sel.id} url={`https://${sel.url}`} /></div>
         <button type="button" className="btn btn-ghost mt-auto text-xs text-muted">Site verwijderen</button>
-        </>}
       </aside>
     </div>
   );
